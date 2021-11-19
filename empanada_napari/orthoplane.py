@@ -1,3 +1,4 @@
+import os
 import zarr
 import yaml
 import torch.hub
@@ -12,8 +13,9 @@ from mitonet.inference.tracker import InstanceTracker
 from mitonet.inference.matcher import SequentialMatcher
 from mitonet.inference.array_utils import *
 from mitonet.zarr_utils import *
-from mitonet.dask_utils import *
 from mitonet.aggregation.consensus import merge_objects3d
+
+from empanada_napari.dask_utils import *
 
 from tqdm import tqdm
 
@@ -76,7 +78,10 @@ class OrthoPlaneEngine:
         force_connected=True,
         filters=None
     ):
-        self.data = zarr.open(store_url, mode='w')
+        if os.path.isdir(store_url):
+            self.data = zarr.open(store_url, mode='r+')
+        else:
+            self.data = zarr.open(store_url, mode='w')
 
         # load the base and render models
         base_model = torch.hub.load_state_dict_from_url(model_config['base_model'])
@@ -92,7 +97,7 @@ class OrthoPlaneEngine:
             base_model, render_model, thing_list, [1],
             inference_scale, median_kernel_size, label_divisor,
             stuff_area, void_label, nms_threshold, nms_kernel,
-            confidence_thr
+            confidence_thr, device='cpu'
         )
 
         # set the image transforms
@@ -160,7 +165,7 @@ class OrthoPlaneEngine:
             if pan_seg is None:
                 # building the queue
                 continue
-            
+
             # only support single scale (i.e. scale 1)
             pan_seg = pan_seg[0]
             pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions

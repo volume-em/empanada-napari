@@ -23,10 +23,11 @@ def widget_wrapper():
     from napari.qt.threading import thread_worker
 
     # Import when users activate plugin
-    from cellpose_napari.orthoplane import OrthoPlaneEngine, tracker_consensus
+    from empanada_napari.orthoplane import OrthoPlaneEngine, tracker_consensus
 
     model_configs = {
-        'MitoNet': 'https://www.dropbox.com/s/7420koff8j0te7d/mitonet_211118.yaml?dl=1'
+        'MitoNet': 'https://www.dropbox.com/s/7420koff8j0te7d/mitonet_211118.yaml?dl=1',
+        'MitoNet_V2': 'https://www.dropbox.com/s/t40hjkfwtc70zle/mitonet_211119.yaml?dl=1'
     }
     
     trackers = {}
@@ -56,7 +57,7 @@ def widget_wrapper():
         call_button='Run Segmentation',  
         layout='vertical',
         store_url=dict(widget_type='FileEdit', label='save path', mode='d', tooltip='location to save file'),
-        model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value='MitoNet', tooltip='Model to use for inference'),
+        model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
         run_xy=dict(widget_type='CheckBox', text='Infer XY', value=True, tooltip='Run inference on xy images'),
         run_xz=dict(widget_type='CheckBox', text='Infer XZ', value=True, tooltip='Run inference on xz images'),
         run_yz=dict(widget_type='CheckBox', text='Infer YZ', value=True, tooltip='Run inference on yz images'),
@@ -75,7 +76,6 @@ def widget_wrapper():
         if not hasattr(widget, 'mitonet_layers'):
             widget.mitonet_layers = []
 
-        print(store_url)
         if not str(store_url).endswith('.zarr'):
             store_url += f'{image_layer.name}_{model_config}-napari.zarr'
 

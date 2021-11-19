@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os
-import codecs
 from setuptools import setup, find_packages
 
 
@@ -10,7 +8,7 @@ install_deps = [
     'napari',
     'napari-plugin-engine>=0.1.4',
     'imagecodecs',
-    'git+https://github.com/volume-em/MitoNet.git#egg=my-git-package'
+    'mitonet'
 ]
 
 setup(
@@ -24,7 +22,9 @@ setup(
     python_requires='>=3.7',
     use_scm_version=True,
     install_requires=install_deps,
-    setup_requires=['setuptools_scm'],
+    dependency_links = ['https://github.com/volume-em/MitoNet#egg=mitonet'],
+    setup_requires=['setuptools_scm', 'pytest-runner'],
+    tests_require=['pytest', 'pytest-qt'],
     include_package_data=True,
     classifiers=[
         'Programming Language :: Python',
