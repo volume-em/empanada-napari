@@ -1,0 +1,3 @@
+napari-plugin-engine
+imagecodecs
+git+https://github.com/volume-em/MitoNet.git#egg=my-git-package
