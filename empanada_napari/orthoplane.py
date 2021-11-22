@@ -60,6 +60,58 @@ def tracker_consensus(trackers, store_url, model_config, label_divisor=1000):
 
     return consensus_vol
 
+class TestEngine:
+    def __init__(
+        self,
+        model_config,
+        inference_scale=1,
+        label_divisor=1000,
+        stuff_area=64,
+        void_label=0,
+        nms_threshold=0.1,
+        nms_kernel=3,
+        confidence_thr=0.3,
+    ):
+        # load the base and render models
+        base_model = torch.hub.load_state_dict_from_url(model_config['base_model'])
+        render_model = torch.hub.load_state_dict_from_url(model_config['render_model'])
+        thing_list = model_config['thing_list']
+        self.thing_list = thing_list
+        self.labels = model_config['labels']
+        self.class_names = model_config['class_names']
+        self.label_divisor = label_divisor
+        self.padding_factor = model_config['padding_factor']
+
+        # create the inference engine
+        self.engine = MultiScaleInferenceEngine(
+            base_model, render_model, thing_list, [1],
+            inference_scale, 1, label_divisor,
+            stuff_area, void_label, nms_threshold, nms_kernel,
+            confidence_thr, device='cpu'
+        )
+
+        # set the image transforms
+        norms = model_config['norms']
+        gray_channels = 1
+        self.tfs = A.Compose([
+            A.Normalize(**norms),
+            ToTensorV2()
+        ])
+
+    def infer(self, image):
+        image = self.tfs(image=image)['image'].unsqueeze(0)
+        h, w = image.size()[2:]
+        image = factor_pad(image, self.padding_factor)
+            
+        pan_seg = self.engine(image)
+
+        # only support single scale (i.e. scale 1)
+        pan_seg = pan_seg[0]
+        pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions
+        pan_seg = pan_seg.cpu().numpy() # move to cpu if not already
+
+        return pan_seg
+
 class OrthoPlaneEngine:
     def __init__(
         self,
@@ -87,6 +139,7 @@ class OrthoPlaneEngine:
         base_model = torch.hub.load_state_dict_from_url(model_config['base_model'])
         render_model = torch.hub.load_state_dict_from_url(model_config['render_model'])
         thing_list = model_config['thing_list']
+        self.thing_list = thing_list
         self.labels = model_config['labels']
         self.class_names = model_config['class_names']
         self.label_divisor = label_divisor
@@ -109,16 +162,21 @@ class OrthoPlaneEngine:
         ])
 
         self.axes = {'xy': 0, 'xz': 1, 'yz': 2}
+        self.merge_iou_thr = merge_iou_thr
+        self.merge_ioa_thr = merge_ioa_thr
+        self.force_connected = force_connected
 
-        # create the matchers for each class
-        self.matchers = []
-        for thing_class in thing_list:
-            self.matchers.append(
+    def create_matchers(self):
+        matchers = []
+        for thing_class in self.thing_list:
+            matchers.append(
                 SequentialMatcher(
-                    thing_class, label_divisor, merge_iou_thr, 
-                    merge_ioa_thr, force_connected=force_connected
+                    thing_class, self.label_divisor, self.merge_iou_thr, 
+                    self.merge_ioa_thr, force_connected=self.force_connected
                 )
             )
+
+        return matchers
 
     def create_panoptic_stack(self, axis_name, shape3d):
         # faster IO with chunking only along
@@ -150,6 +208,8 @@ class OrthoPlaneEngine:
             for label in self.labels
         ]
 
+        matchers = self.create_matchers()
+
         # output stack
         stack = self.create_panoptic_stack(axis_name, volume.shape)
 
@@ -173,7 +233,7 @@ class OrthoPlaneEngine:
             
             # update the panoptic segmentations for each
             # thing class by passing it through matchers
-            for matcher in self.matchers:
+            for matcher in matchers:
                 if matcher.target_seg is None:
                     pan_seg = matcher.initialize_target(pan_seg)
                 else:
@@ -195,7 +255,7 @@ class OrthoPlaneEngine:
                 pan_seg = pan_seg.squeeze()[:h, :w]
                 pan_seg = pan_seg.cpu().numpy()
                 
-                for matcher in self.matchers:
+                for matcher in matchers:
                     pan_seg = matcher(pan_seg)
                     
                 stack = zarr_put3d(stack, fill_index, pan_seg, axis)
@@ -205,7 +265,7 @@ class OrthoPlaneEngine:
 
         # set the matchers to not assign new labels
         # and not split disconnected components
-        for matcher in self.matchers:
+        for matcher in matchers:
             matcher.assign_new = False
             matcher.force_connected = False
 
@@ -214,7 +274,7 @@ class OrthoPlaneEngine:
             rev_idx = rev_idx.item()
             pan_seg = zarr_take3d(stack, rev_idx, axis)
             
-            for matcher in self.matchers:
+            for matcher in matchers:
                 pan_seg = matcher(pan_seg)
 
             stack = zarr_put3d(stack, rev_idx, pan_seg, axis)
@@ -226,10 +286,6 @@ class OrthoPlaneEngine:
         # finish tracking
         for tracker in trackers:
             tracker.finish()
-
-        # reset the matchers
-        for matcher in self.matchers:
-            matcher.target_seg = None
 
         self.engine.reset()
 
