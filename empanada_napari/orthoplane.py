@@ -19,6 +19,9 @@ from empanada_napari.dask_utils import *
 
 from tqdm import tqdm
 
+from napari.qt.threading import thread_worker
+
+@thread_worker
 def tracker_consensus(trackers, store_url, model_config, label_divisor=1000):
     labels = model_config['labels']
     class_names = model_config['class_names']
@@ -57,8 +60,7 @@ def tracker_consensus(trackers, store_url, model_config, label_divisor=1000):
             overwrite=True, chunks=(1, None, None)
         )
         zarr_fill_instances(consensus_vol, consensus_tracker.instances)
-
-    return consensus_vol
+        yield consensus_vol, class_name
 
 class TestEngine:
     def __init__(

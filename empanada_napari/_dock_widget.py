@@ -3,7 +3,7 @@ cellpose dock widget module
 """
 import sys
 import yaml
-from urllib.request import urlopen
+import os
 from typing import Any
 from napari_plugin_engine import napari_hook_implementation
 
@@ -27,13 +27,15 @@ def widget_wrapper():
     # Import when users activate plugin
     from empanada_napari.orthoplane import TestEngine, OrthoPlaneEngine, tracker_consensus
 
-    model_configs = {
-        'MitoNet': 'https://www.dropbox.com/s/7420koff8j0te7d/mitonet_211118.yaml?dl=1',
-        'MitoNet_V2': 'https://www.dropbox.com/s/t40hjkfwtc70zle/mitonet_211119.yaml?dl=1'
-    }
+    # get dict of all model configs
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs')
+    model_configs = {}
+    for fn in os.listdir(config_path):
+        if fn.endswith('.yaml'):
+            model_configs[fn[:-len('.yaml')]] = os.path.join(config_path, fn)
 
-    def download_config(url):
-        with urlopen(url) as handle:
+    def load_config(url):
+        with open(url, mode='r') as handle:
             config = yaml.load(handle, Loader=yaml.FullLoader)
 
         return config
@@ -47,10 +49,10 @@ def widget_wrapper():
             yield stack, trackers, axis_name
 
     @thread_worker
-    def test_mitonet(image, model_config):
+    def test_mitonet(image, model_config, axis, plane):
         # create the inference engine
         engine = TestEngine(model_config)
-        return image, engine.infer(image)
+        return image, engine.infer(image), axis, plane
 
     @thread_worker
     def yield_dummy(volume):
@@ -61,22 +63,22 @@ def widget_wrapper():
             time.sleep(2)
             print('Sleeping...')
 
-    @thread_worker
-    def create_consensus(trackers, store_url, model_config):
-        consensus_vol = tracker_consensus(trackers, store_url, model_config, label_divisor=1000)
-        return consensus_vol
+    #@thread_worker
+    #def create_consensus(trackers, store_url, model_config):
+    #    yield tracker_consensus(trackers, store_url, model_config, label_divisor=1000)
         
     @magicgui(
-        call_button='Run Segmentation',
+        #call_button='Run Segmentation',
+        auto_call=True,
         layout='vertical',
-        store_url=dict(widget_type='FileEdit', label='save path', mode='d', tooltip='location to save file'),
-        model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[-1], tooltip='Model to use for inference'),
+        store_url=dict(widget_type='FileEdit', value='/Users/conradrw/Desktop/napari_gastro.zarr', label='save path', mode='d', tooltip='location to save file'),
+        model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
         run_xy=dict(widget_type='CheckBox', text='Infer XY', value=True, tooltip='Run inference on xy images'),
-        run_xz=dict(widget_type='CheckBox', text='Infer XZ', value=True, tooltip='Run inference on xz images'),
-        run_yz=dict(widget_type='CheckBox', text='Infer YZ', value=True, tooltip='Run inference on yz images'),
+        run_xz=dict(widget_type='CheckBox', text='Infer XZ', value=False, tooltip='Run inference on xz images'),
+        run_yz=dict(widget_type='CheckBox', text='Infer YZ', value=False, tooltip='Run inference on yz images'),
         compute_consensus=dict(widget_type='PushButton', text='Compute Consensus', tooltip='Create consensus annotation from axis predictions'),
         test_image=dict(widget_type='PushButton', text='Test Image', tooltip='Test model on the current image'),
-        #run_segmentation=dict(widget_type='PushButton', text='Run Segmentation', tooltip='Run segmentation on the volume'),
+        run_segmentation=dict(widget_type='PushButton', text='Run Segmentation', tooltip='Run segmentation on the volume'),
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -88,8 +90,9 @@ def widget_wrapper():
         run_yz,
         compute_consensus,
         test_image,
-        #run_segmentation
+        run_segmentation
     ):
+        print(widget.compute_consensus.clicked, widget.test_image.clicked, widget.run_segmentation.clicked)
         if not hasattr(widget, 'mitonet_layers'):
             widget.mitonet_layers = []
 
@@ -105,22 +108,22 @@ def widget_wrapper():
         """
 
         # load the model config
-        model_config = download_config(model_configs[model_config])
+        model_config = load_config(model_configs[model_config])
 
-        def _new_layers(masks, axis_name):
+        def _new_layers(masks, description):
             widget.masks_orig = masks
             layers = []
 
             if type(masks) == zarr.core.Array:
                 masks = da.from_zarr(masks)
 
-            layers.append(viewer.add_labels(masks, name=f'{image_layer.name}-Panoptic-{axis_name}', visible=False))
+            layers.append(viewer.add_labels(masks, name=f'{image_layer.name}-{description}', visible=False))
             widget.mitonet_layers.append(layers)
 
         def _new_segmentation(*args):
             masks, tracker, axis_name = args[0]
             try:
-                _new_layers(masks, axis_name)
+                _new_layers(masks, f'Panoptic-{axis_name}')
                 
                 for layer in viewer.layers:
                     layer.visible = False
@@ -133,8 +136,6 @@ def widget_wrapper():
             except Exception as e:
                 print(e)
                 
-            widget.call_button.enabled = True
-
         def _append(image):
             if image is None:
                 return
@@ -150,26 +151,33 @@ def widget_wrapper():
                 image = da.from_array(image).reshape((1,) + image.shape)
                 layer = viewer.add_image(image, rendering='attenuated_mip')
 
-        def _get_current_image():
-            data = viewer.layers.selection.active.data
+        def _get_current_slice(image_layer):
             axis = viewer.dims.order[0]
-            plane = viewer.dims.current_step[axis]
+            cursor_pos = viewer.cursor.position
+            plane = int(image_layer.world_to_data(cursor_pos)[axis])
 
             slices = [slice(None), slice(None), slice(None)]
             slices[axis] = plane
-            return data[tuple(slices)]
+
+            return image_layer.data[tuple(slices)], axis, plane
 
         def _new_test(*args):
+            image, seg, axis, plane = args[0]
+
+            seg = np.expand_dims(seg, axis=axis)
+            translate = [0, 0, 0]
+            translate[axis] = plane
+
+            mask_layer = viewer.add_labels(seg, name=f'Test Seg {widget.test_count}', visible=True, translate=tuple(translate))
+
+            widget.mitonet_layers.append(mask_layer)
+            widget.test_count += 1
+
+        def _new_consensus(*args):
             print(args)
-            image, seg = args[0]
-            image_layer = viewer.add_image(image, name=f'Test Image {widget.test_count}', visible=True)
-            mask_layer = viewer.add_labels(seg, name=f'Test Seg {widget.test_count}', visible=True)
-
-            widget.mitonet_layers.extend([image_layer, mask_layer])
-
-        def _new_consensus(masks):
+            masks, class_name = args[0]
             try:
-                _new_layers(masks, 'consensus')
+                _new_layers(masks, f'{class_name}-consensus')
                 
                 for layer in viewer.layers:
                     layer.visible = False
@@ -179,9 +187,7 @@ def widget_wrapper():
                     
             except Exception as e:
                 print(e)
-                
-            widget.call_button.enabled = True
-            
+                            
         image = image_layer.data
 
         axis_names = []
@@ -198,24 +204,29 @@ def widget_wrapper():
         #print('calling')
         #@widget.run_segmentation.changed.connect 
         #def _run_segmentation(e: Any):
+        #if run_segmentation:
         worker = run_mitonet(image, store_url, model_config, axes=axis_names)
         worker.yielded.connect(_new_segmentation)
-        worker.start()
+        widget.run_segmentation.changed.connect(worker.start)
 
-        @widget.compute_consensus.changed.connect 
-        def _compute_consensus(e: Any):
-            consensus_worker = create_consensus(widget.trackers, store_url, model_config)
-            consensus_worker.returned.connect(_new_consensus)
+        if compute_consensus:
+        #@widget.compute_consensus.changed.connect 
+        #def _compute_consensus(e: Any):
+            consensus_worker = tracker_consensus(widget.trackers, store_url, model_config, label_divisor=1000)
+            consensus_worker.yielded.connect(_new_consensus)
             consensus_worker.start()
 
-        @widget.test_image.changed.connect 
-        def _test_on_image(e: Any):
+        if test_image:
+        #@widget.test_image.changed.connect 
+        #def _test_on_image(e: Any):
             # get the image
-            image = _get_current_image()
-            if type(image) == da.core.Array:
-                image = image.compute()
+            print('testing', image_layer, image_layer.name)
+            image2d, axis, plane = _get_current_slice(image_layer)
+            if type(image2d) == da.core.Array:
+                image2d = image2d.compute()
 
-            test_worker = test_mitonet(image, model_config)
+            #axis = 
+            test_worker = test_mitonet(image2d, model_config, axis, plane)
             test_worker.returned.connect(_new_test)
             test_worker.start()
 
