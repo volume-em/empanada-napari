@@ -8,6 +8,7 @@ install_deps = [
     'napari',
     'napari-plugin-engine>=0.1.4',
     'imagecodecs',
+    'albumentations',
     'mitonet'
 ]
 

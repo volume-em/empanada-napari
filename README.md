@@ -1,2 +1,2 @@
-# empanada-napari
-EM Panoptic Segmentation models for napari
+# Empanada-Napari
+**EM** **Pan**optic **A**ny **D**imension **A**nnotation

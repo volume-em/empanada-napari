@@ -1,0 +1,12 @@
+base_model: "https://www.dropbox.com/s/llv65sxfhhxim6t/mmm_base_model_optim_211119.pth?dl=1"
+class_names:
+- mito
+labels:
+- 1
+norms:
+  mean: 0.57287007
+  std: 0.12740536
+padding_factor: 16
+render_model: "https://www.dropbox.com/s/9icxkypab5g28ya/point_rend_model_211119.pth?dl=1"
+thing_list:
+- 1
