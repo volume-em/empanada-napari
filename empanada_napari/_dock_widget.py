@@ -84,6 +84,7 @@ def widget_wrapper():
         merge_iou_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOU Threshold'),
         merge_ioa_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOA Threshold'),
         test_image=dict(widget_type='PushButton', text='Test Image', tooltip='Test model on the current image'),
+        stop=dict(widget_type='PushButton', text='Stop', tooltip='Stop'),
         #run_segmentation=dict(widget_type='PushButton', text='Run Segmentation', tooltip='Run segmentation on the volume'),
     )
     def widget(
@@ -99,6 +100,7 @@ def widget_wrapper():
         merge_ioa_thr,
         compute_consensus,
         test_image,
+        stop,
         #run_segmentation
     ):
         if not hasattr(widget, 'mitonet_layers'):
@@ -214,7 +216,14 @@ def widget_wrapper():
         worker = run_mitonet(image, store_url, model_config, axis_names, confidence_thr, merge_iou_thr, merge_ioa_thr)
         worker.yielded.connect(_new_segmentation)
         #widget.run_segmentation.changed.connect(worker.start)
+        #widget.stop.clicked.connect(worker.quit)
+        #worker.finished.connect(widget.stop.clicked.disconnect)
         worker.start()
+
+        @widget.stop.changed.connect
+        def stop_segmentation(e: Any):
+            worker.quit()
+            #worker.finsihed.connect(widget.stop.clicked.disconnect)
 
         #if compute_consensus:
         @widget.compute_consensus.changed.connect 
