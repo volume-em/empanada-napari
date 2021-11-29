@@ -41,9 +41,9 @@ def widget_wrapper():
         return config
     
     @thread_worker
-    def run_mitonet(volume, store_url, model_config, axes):
+    def run_mitonet(volume, store_url, model_config, axes, confidence_thr, merge_iou_thr, merge_ioa_thr):
         # create the inference engine
-        engine = OrthoPlaneEngine(store_url, model_config)
+        engine = OrthoPlaneEngine(store_url, model_config, confidence_thr, merge_iou_thr, merge_ioa_thr)
         for axis_name in axes:
             stack, trackers = engine.infer_on_axis(volume, axis_name)
             yield stack, trackers, axis_name
@@ -77,6 +77,9 @@ def widget_wrapper():
         run_xz=dict(widget_type='CheckBox', text='Infer XZ', value=False, tooltip='Run inference on xz images'),
         run_yz=dict(widget_type='CheckBox', text='Infer YZ', value=False, tooltip='Run inference on yz images'),
         compute_consensus=dict(widget_type='PushButton', text='Compute Consensus', tooltip='Create consensus annotation from axis predictions'),
+        confidence_threshold=dict(widget_type='FloatSlider', value=0.3, max=0.9, label= 'Confidence Threshold'),
+        merge_iou_threshold=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOU Threshold'),
+        merge_ioa_threshold=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOA Threshold'),
         test_image=dict(widget_type='PushButton', text='Test Image', tooltip='Test model on the current image'),
         run_segmentation=dict(widget_type='PushButton', text='Run Segmentation', tooltip='Run segmentation on the volume'),
     )
@@ -87,12 +90,14 @@ def widget_wrapper():
         model_config,
         run_xy,
         run_xz,
-        run_yz,
+        run_yz, 
+        confidence_threshold,
+        merge_iou_threshold,
+        merge_ioa_threshold,
         compute_consensus,
         test_image,
         run_segmentation
     ):
-        print(widget.compute_consensus.clicked, widget.test_image.clicked, widget.run_segmentation.clicked)
         if not hasattr(widget, 'mitonet_layers'):
             widget.mitonet_layers = []
 
@@ -102,11 +107,9 @@ def widget_wrapper():
         if not hasattr(widget, 'test_count'):
             widget.test_count = 0
 
-        """
         if not str(store_url).endswith('.zarr'):
-            store_url += f'{image_layer.name}_{model_config}-napari.zarr'
-        """
-
+            store_url = store_url / f'{image_layer.name}_{model_config}-napari.zarr'
+            
         # load the model config
         model_config = load_config(model_configs[model_config])
 
@@ -174,19 +177,22 @@ def widget_wrapper():
             widget.test_count += 1
 
         def _new_consensus(*args):
-            print(args)
             masks, class_name = args[0]
-            try:
-                _new_layers(masks, f'{class_name}-consensus')
+            if(len(widget.trackers.keys()) >= 2):
+                try:
+                    _new_layers(masks, f'{class_name}-consensus')
+
+                    for layer in viewer.layers:
+                        layer.visible = False
+
+                    viewer.layers[-1].visible = True
+                    image_layer.visible = True    
+                except Exception as e:
+                    print(e)
+            else:
+                raise ValueError("Need to run segmentation on at least 2 axes for consensus!")
                 
-                for layer in viewer.layers:
-                    layer.visible = False
-                    
-                viewer.layers[-1].visible = True
-                image_layer.visible = True
-                    
-            except Exception as e:
-                print(e)
+            #widget.call_button.enabled = True
                             
         image = image_layer.data
 
@@ -197,7 +203,11 @@ def widget_wrapper():
             axis_names.append('xz')
         if run_yz:
             axis_names.append('yz')
-
+        
+        confidence_thr = confidence_threshold["value"]
+        merge_iou_thr = merge_iou_threshold["value"]
+        merge_ioa_thr = merge_ioa_threshold["value"]
+        
         #worker = yield_dummy(image)
         #worker.yielded.connect(_append)
         #worker.start()
