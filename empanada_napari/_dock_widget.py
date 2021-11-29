@@ -43,7 +43,10 @@ def widget_wrapper():
     @thread_worker
     def run_mitonet(volume, store_url, model_config, axes, confidence_thr, merge_iou_thr, merge_ioa_thr):
         # create the inference engine
-        engine = OrthoPlaneEngine(store_url, model_config, confidence_thr, merge_iou_thr, merge_ioa_thr)
+        engine = OrthoPlaneEngine(
+            store_url, model_config, confidence_thr=confidence_thr, 
+            merge_iou_thr=merge_iou_thr, merge_ioa_thr=merge_ioa_thr
+        )
         for axis_name in axes:
             stack, trackers = engine.infer_on_axis(volume, axis_name)
             yield stack, trackers, axis_name
@@ -68,8 +71,8 @@ def widget_wrapper():
     #    yield tracker_consensus(trackers, store_url, model_config, label_divisor=1000)
         
     @magicgui(
-        #call_button='Run Segmentation',
-        auto_call=True,
+        call_button='Run Segmentation',
+        #auto_call=True,
         layout='vertical',
         store_url=dict(widget_type='FileEdit', value='/Users/conradrw/Desktop/napari_gastro.zarr', label='save path', mode='d', tooltip='location to save file'),
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
@@ -77,11 +80,11 @@ def widget_wrapper():
         run_xz=dict(widget_type='CheckBox', text='Infer XZ', value=False, tooltip='Run inference on xz images'),
         run_yz=dict(widget_type='CheckBox', text='Infer YZ', value=False, tooltip='Run inference on yz images'),
         compute_consensus=dict(widget_type='PushButton', text='Compute Consensus', tooltip='Create consensus annotation from axis predictions'),
-        confidence_threshold=dict(widget_type='FloatSlider', value=0.3, max=0.9, label= 'Confidence Threshold'),
-        merge_iou_threshold=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOU Threshold'),
-        merge_ioa_threshold=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOA Threshold'),
+        confidence_thr=dict(widget_type='FloatSlider', value=0.3, max=0.9, label= 'Confidence Threshold'),
+        merge_iou_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOU Threshold'),
+        merge_ioa_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOA Threshold'),
         test_image=dict(widget_type='PushButton', text='Test Image', tooltip='Test model on the current image'),
-        run_segmentation=dict(widget_type='PushButton', text='Run Segmentation', tooltip='Run segmentation on the volume'),
+        #run_segmentation=dict(widget_type='PushButton', text='Run Segmentation', tooltip='Run segmentation on the volume'),
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -91,12 +94,12 @@ def widget_wrapper():
         run_xy,
         run_xz,
         run_yz, 
-        confidence_threshold,
-        merge_iou_threshold,
-        merge_ioa_threshold,
+        confidence_thr,
+        merge_iou_thr,
+        merge_ioa_thr,
         compute_consensus,
         test_image,
-        run_segmentation
+        #run_segmentation
     ):
         if not hasattr(widget, 'mitonet_layers'):
             widget.mitonet_layers = []
@@ -178,19 +181,16 @@ def widget_wrapper():
 
         def _new_consensus(*args):
             masks, class_name = args[0]
-            if(len(widget.trackers.keys()) >= 2):
-                try:
-                    _new_layers(masks, f'{class_name}-consensus')
+            try:
+                _new_layers(masks, f'{class_name}-consensus')
 
-                    for layer in viewer.layers:
-                        layer.visible = False
+                for layer in viewer.layers:
+                    layer.visible = False
 
-                    viewer.layers[-1].visible = True
-                    image_layer.visible = True    
-                except Exception as e:
-                    print(e)
-            else:
-                raise ValueError("Need to run segmentation on at least 2 axes for consensus!")
+                viewer.layers[-1].visible = True
+                image_layer.visible = True    
+            except Exception as e:
+                print(e)
                 
             #widget.call_button.enabled = True
                             
@@ -204,10 +204,6 @@ def widget_wrapper():
         if run_yz:
             axis_names.append('yz')
         
-        confidence_thr = confidence_threshold["value"]
-        merge_iou_thr = merge_iou_threshold["value"]
-        merge_ioa_thr = merge_ioa_threshold["value"]
-        
         #worker = yield_dummy(image)
         #worker.yielded.connect(_append)
         #worker.start()
@@ -215,27 +211,30 @@ def widget_wrapper():
         #@widget.run_segmentation.changed.connect 
         #def _run_segmentation(e: Any):
         #if run_segmentation:
-        worker = run_mitonet(image, store_url, model_config, axes=axis_names)
+        worker = run_mitonet(image, store_url, model_config, axis_names, confidence_thr, merge_iou_thr, merge_ioa_thr)
         worker.yielded.connect(_new_segmentation)
-        widget.run_segmentation.changed.connect(worker.start)
+        #widget.run_segmentation.changed.connect(worker.start)
+        worker.start()
 
-        if compute_consensus:
-        #@widget.compute_consensus.changed.connect 
-        #def _compute_consensus(e: Any):
-            consensus_worker = tracker_consensus(widget.trackers, store_url, model_config, label_divisor=1000)
-            consensus_worker.yielded.connect(_new_consensus)
-            consensus_worker.start()
+        #if compute_consensus:
+        @widget.compute_consensus.changed.connect 
+        def _compute_consensus(e: Any):
+            if(len(widget.trackers.keys()) >= 2):
+                consensus_worker = tracker_consensus(widget.trackers, store_url, model_config, label_divisor=1000)
+                consensus_worker.yielded.connect(_new_consensus)
+                consensus_worker.start()
+            else:
+                raise ValueError(f"Need to run segmentation on at least 2 axes for consensus! Got {list(widget.trackers.keys())}")
 
-        if test_image:
-        #@widget.test_image.changed.connect 
-        #def _test_on_image(e: Any):
+        #if test_image:
+        @widget.test_image.changed.connect 
+        def _test_on_image(e: Any):
             # get the image
             print('testing', image_layer, image_layer.name)
             image2d, axis, plane = _get_current_slice(image_layer)
             if type(image2d) == da.core.Array:
                 image2d = image2d.compute()
 
-            #axis = 
             test_worker = test_mitonet(image2d, model_config, axis, plane)
             test_worker.returned.connect(_new_test)
             test_worker.start()
