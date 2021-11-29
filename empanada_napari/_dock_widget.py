@@ -39,9 +39,9 @@ def widget_wrapper():
         return config
     
     @thread_worker
-    def run_mitonet(volume, store_url, model_config, axes):
+    def run_mitonet(volume, store_url, model_config, axes, confidence_thr, merge_iou_thr, merge_ioa_thr):
         # create the inference engine
-        engine = OrthoPlaneEngine(store_url, model_config)
+        engine = OrthoPlaneEngine(store_url, model_config, confidence_thr, merge_iou_thr, merge_ioa_thr)
         for axis_name in axes:
             stack, trackers = engine.infer_on_axis(volume, axis_name)
             yield stack[...], trackers, axis_name
@@ -62,6 +62,10 @@ def widget_wrapper():
         run_xz=dict(widget_type='CheckBox', text='Infer XZ', value=True, tooltip='Run inference on xz images'),
         run_yz=dict(widget_type='CheckBox', text='Infer YZ', value=True, tooltip='Run inference on yz images'),
         compute_consensus=dict(widget_type='PushButton', text='Compute Consensus', tooltip='Create consensus annotation from axis predictions'),
+        confidence_threshold=dict(widget_type='FloatSlider', value=0.3, max=0.9, label= 'Confidence Threshold'),
+        merge_iou_threshold=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOU Threshold'),
+        merge_ioa_threshold=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOA Threshold'),
+        
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -70,15 +74,18 @@ def widget_wrapper():
         model_config,
         run_xy,
         run_xz,
-        run_yz,
+        run_yz, 
+        confidence_threshold,
+        merge_iou_threshold,
+        merge_ioa_threshold,
         compute_consensus
     ):
         if not hasattr(widget, 'mitonet_layers'):
             widget.mitonet_layers = []
 
         if not str(store_url).endswith('.zarr'):
-            store_url += f'{image_layer.name}_{model_config}-napari.zarr'
-
+            #store_url += f'{image_layer.name}_{model_config}-napari.zarr'
+            store_url = store_url / f'{image_layer.name}_{model_config}-napari.zarr'
         # load the model config
         model_config = download_config(model_configs[model_config])
 
@@ -107,17 +114,20 @@ def widget_wrapper():
             widget.call_button.enabled = True
 
         def _new_consensus(masks):
-            try:
-                _new_layers(masks, 'consensus')
+            if(len(axis_names) > 0):
+                try:
+                    _new_layers(masks, 'consensus')
                 
-                for layer in viewer.layers:
-                    layer.visible = False
+                    for layer in viewer.layers:
+                        layer.visible = False
                     
-                viewer.layers[-1].visible = True
-                image_layer.visible = True
-                    
-            except Exception as e:
-                print(e)
+                    viewer.layers[-1].visible = True
+                    image_layer.visible = True    
+                except Exception as e:
+                    print(e)
+            else:
+                raise ValueError("Need atleast one axis checked!")
+
                 
             widget.call_button.enabled = True
             
@@ -130,6 +140,10 @@ def widget_wrapper():
             axis_names.append('xz')
         if run_yz:
             axis_names.append('yz')
+        
+        confidence_thr = confidence_threshold["value"]
+        merge_iou_thr = merge_iou_threshold["value"]
+        merge_ioa_thr = merge_ioa_threshold["value"]
 
         cp_worker = run_mitonet(image, store_url, model_config, axes=axis_names)
         cp_worker.yielded.connect(_new_segmentation)
@@ -137,10 +151,13 @@ def widget_wrapper():
 
         @widget.compute_consensus.changed.connect 
         def _compute_consensus(e: Any):
-            consensus_worker = create_consensus(trackers, store_url, model_config)
-            consensus_worker.returned.connect(_new_consensus)
-            consensus_worker.start()
-
+            if(len(axis_names) < 2):
+                consensus_worker = create_consensus(trackers, store_url, model_config)
+                consensus_worker.returned.connect(_new_consensus)
+                consensus_worker.start()
+            else:
+                raise ValueError("Need to have atleast two axes checked!")
+                
     return widget
 
 @napari_hook_implementation
