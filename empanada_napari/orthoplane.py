@@ -15,7 +15,7 @@ from mitonet.inference.array_utils import *
 from mitonet.zarr_utils import *
 from mitonet.aggregation.consensus import merge_objects3d
 
-from empanada_napari.dask_utils import *
+from empanada_napari.utils import ArrayData
 
 from tqdm import tqdm
 
@@ -43,16 +43,14 @@ def tracker_consensus(trackers, store_url, model_config, label_divisor=1000):
         # merge instances from orthoplane inference if applicable
         if len(class_trackers) > 1:
             consensus_tracker = InstanceTracker(class_id, label_divisor, shape3d, 'xy')
-            
             consensus_tracker.instances = merge_objects3d(class_trackers)
-
-            # apply filters to final merged segmentation
-            #if filter_names:
-            #    for filt,kwargs in zip(filter_names, filter_kwargs):
-            #        filters.__dict__[filt](consensus_tracker, **kwargs)
         else:
             consensus_tracker = class_trackers[0]
-            
+
+        # apply filters to final merged segmentation
+        #if filter_names:
+        #    for filt,kwargs in zip(filter_names, filter_kwargs):
+        #        filters.__dict__[filt](consensus_tracker, **kwargs)   
 
         # decode and fill the instances
         consensus_vol = data.create_dataset(
@@ -77,16 +75,17 @@ class TestEngine:
         # load the base and render models
         base_model = torch.hub.load_state_dict_from_url(model_config['base_model'])
         render_model = torch.hub.load_state_dict_from_url(model_config['render_model'])
-        thing_list = model_config['thing_list']
-        self.thing_list = thing_list
+
+        self.thing_list = model_config['thing_list']
         self.labels = model_config['labels']
         self.class_names = model_config['class_names']
         self.label_divisor = label_divisor
         self.padding_factor = model_config['padding_factor']
+        self.inference_scale = inference_scale
 
         # create the inference engine
         self.engine = MultiScaleInferenceEngine(
-            base_model, render_model, thing_list, [1],
+            base_model, render_model, self.thing_list, [1],
             inference_scale, 1, label_divisor,
             stuff_area, void_label, nms_threshold, nms_kernel,
             confidence_thr, device='cpu'
@@ -100,6 +99,30 @@ class TestEngine:
             ToTensorV2()
         ])
 
+    def update_params(
+        self,
+        inference_scale,
+        label_divisor,
+        nms_threshold,
+        nms_kernel,
+        confidence_thr
+    ):
+        # note that input_scale is the variable name in the engine
+        self.inference_scale = inference_scale
+        self.engine.input_scale = inference_scale
+
+        self.label_divisor = label_divisor
+        self.engine.label_divisor = label_divisor
+
+        self.nms_threshold = nms_threshold
+        self.engine.nms_threshold = nms_threshold
+
+        self.nms_kernel = nms_kernel
+        self.engine.nms_kernel = nms_kernel
+
+        self.confidence_thr = confidence_thr
+        self.engine.confidence_thr = confidence_thr
+
     def infer(self, image):
         image = self.tfs(image=image)['image'].unsqueeze(0)
         h, w = image.size()[2:]
@@ -109,6 +132,17 @@ class TestEngine:
 
         # only support single scale (i.e. scale 1)
         pan_seg = pan_seg[0]
+
+        if self.inference_scale > 1:
+            if h % 2 == 0:
+                h = h * self.inference_scale
+            else:
+                h = 1 + (h - 1) * self.inference_scale
+            if w % 2 == 0:
+                w = w * self.inference_scale
+            else:
+                w = 1 + (w - 1) * self.inference_scale
+
         pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions
         pan_seg = pan_seg.cpu().numpy() # move to cpu if not already
 
@@ -196,7 +230,7 @@ class OrthoPlaneEngine:
     def infer_on_axis(self, volume, axis_name):
         axis = self.axes[axis_name]
         # create the dataloader
-        dataset = DaskData(volume, axis, self.tfs)
+        dataset = ArrayData(volume, axis, self.tfs)
         dataloader = DataLoader(
             dataset, batch_size=1, shuffle=False, pin_memory=False, 
             drop_last=False, num_workers=0

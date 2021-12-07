@@ -23,6 +23,7 @@ import dask.array as da
 
 def widget_wrapper():
     from napari.qt.threading import thread_worker
+    from napari.qt import progress
 
     # Import when users activate plugin
     from empanada_napari.orthoplane import TestEngine, OrthoPlaneEngine, tracker_consensus
@@ -48,14 +49,35 @@ def widget_wrapper():
             merge_iou_thr=merge_iou_thr, merge_ioa_thr=merge_ioa_thr
         )
         for axis_name in axes:
-            stack, trackers = engine.infer_on_axis(volume, axis_name)
-            yield stack, trackers, axis_name
+            for i in progress(range(256)):
+                output = engine.infer_on_axis(volume, axis_name)
+                print(type(output))
+                if isinstance(output, int):
+                    continue
+                else:
+                    stack, trackers = output
+                    yield stack, trackers, axis_name
+                #stack, trackers = engine.infer_on_axis(volume, axis_name)
+                #yield stack, trackers, axis_name
 
     @thread_worker
     def test_mitonet(image, model_config, axis, plane):
         # create the inference engine
+        print('Creating engine')
+        engine = TestEngine(model_config, label_divisor=5000)
+        print('Inferring')
+        seg = engine.infer(image)
+        print('Done')
+        return image, seg, axis, plane
+
+    @thread_worker
+    def test_rt(volume, model_config):
+        # create the inference engine
         engine = TestEngine(model_config)
-        return image, engine.infer(image), axis, plane
+        for i,image in enumerate(volume):
+            print(i)
+            yield engine.infer(image.compute())
+            #time.sleep(2)
 
     @thread_worker
     def yield_dummy(volume):
@@ -84,7 +106,7 @@ def widget_wrapper():
         merge_iou_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOU Threshold'),
         merge_ioa_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOA Threshold'),
         test_image=dict(widget_type='PushButton', text='Test Image', tooltip='Test model on the current image'),
-        stop=dict(widget_type='PushButton', text='Stop', tooltip='Stop'),
+        #stop=dict(widget_type='PushButton', text='Stop', tooltip='Stop'),
         #run_segmentation=dict(widget_type='PushButton', text='Run Segmentation', tooltip='Run segmentation on the volume'),
     )
     def widget(
@@ -100,7 +122,7 @@ def widget_wrapper():
         merge_ioa_thr,
         compute_consensus,
         test_image,
-        stop,
+        #stop,
         #run_segmentation
     ):
         if not hasattr(widget, 'mitonet_layers'):
@@ -157,7 +179,7 @@ def widget_wrapper():
             else:
                 # first run, no layer added yet
                 image = da.from_array(image).reshape((1,) + image.shape)
-                layer = viewer.add_image(image, rendering='attenuated_mip')
+                layer = viewer.add_labels(image)
 
         def _get_current_slice(image_layer):
             axis = viewer.dims.order[0]
@@ -193,8 +215,6 @@ def widget_wrapper():
                 image_layer.visible = True    
             except Exception as e:
                 print(e)
-                
-            #widget.call_button.enabled = True
                             
         image = image_layer.data
 
@@ -205,25 +225,39 @@ def widget_wrapper():
             axis_names.append('xz')
         if run_yz:
             axis_names.append('yz')
+
+        """
+        axis_names = 'xy'
+
+        image2d, axis, plane = _get_current_slice(image_layer)
+        if type(image2d) == da.core.Array:
+            image2d = image2d.compute()
+
+        print(image2d.shape, axis, plane)
+        test_worker = test_mitonet(image2d, model_config, axis, plane)
+        test_worker.returned.connect(_new_test)
+        test_worker.start()
+        """
         
-        #worker = yield_dummy(image)
+        #worker = test_rt(image, model_config)
         #worker.yielded.connect(_append)
         #worker.start()
         #print('calling')
         #@widget.run_segmentation.changed.connect 
         #def _run_segmentation(e: Any):
         #if run_segmentation:
+
         worker = run_mitonet(image, store_url, model_config, axis_names, confidence_thr, merge_iou_thr, merge_ioa_thr)
         worker.yielded.connect(_new_segmentation)
         #widget.run_segmentation.changed.connect(worker.start)
         #widget.stop.clicked.connect(worker.quit)
         #worker.finished.connect(widget.stop.clicked.disconnect)
         worker.start()
-
-        @widget.stop.changed.connect
-        def stop_segmentation(e: Any):
-            worker.quit()
-            #worker.finsihed.connect(widget.stop.clicked.disconnect)
+        """
+        #@widget.stop.changed.connect
+        #def stop_segmentation(e: Any):
+        #    worker.quit()
+        #    worker.finished.connect(widget.stop.clicked.disconnect)
 
         #if compute_consensus:
         @widget.compute_consensus.changed.connect 
@@ -247,11 +281,19 @@ def widget_wrapper():
             test_worker = test_mitonet(image2d, model_config, axis, plane)
             test_worker.returned.connect(_new_test)
             test_worker.start()
+        """
 
     return widget
 
-@napari_hook_implementation
-def napari_experimental_provide_dock_widget():
-    return widget_wrapper, {'name': 'empanada'}
+#@napari_hook_implementation
+#def napari_experimental_provide_dock_widget():
+#    return widget_wrapper, {'name': 'empanada'}
 
+#import sys
+#sys.path.append('/Users/conradrw/Desktop/empanada-napari/empanada_napari/_gui/')
+#from _Assistant import Assistant
+
+#@napari_hook_implementation
+#def napari_experimental_provide_dock_widget():
+#    return Assistant
 
