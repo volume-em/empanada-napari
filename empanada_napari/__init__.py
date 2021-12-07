@@ -3,4 +3,12 @@ try:
 except ImportError:
     __version__ = "unknown"
 
-from ._dock_widget import napari_experimental_provide_dock_widget
+from ._test_model import test_dock_widget
+from ._stack_inference import stack_inference_dock_widget
+from ._orthoplane_inference import orthoplane_inference_dock_widget
+
+__all__ = [
+    'test_dock_widget',
+    'stack_inference_dock_widget',
+    'orthoplane_inference_dock_widget'
+]
