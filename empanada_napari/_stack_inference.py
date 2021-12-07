@@ -49,6 +49,7 @@ def stack_inference_widget():
         merge_iou_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOU Threshold'),
         merge_ioa_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IOA Threshold'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value=1000, label='Max objects per class'),
+        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -62,7 +63,8 @@ def stack_inference_widget():
         center_confidence_thr,
         merge_iou_thr,
         merge_ioa_thr,
-        maximum_objects_per_class
+        maximum_objects_per_class,
+        use_gpu
     ):
         # load the model config
         model_config = load_config(model_configs[model_config])
@@ -71,7 +73,11 @@ def stack_inference_widget():
         if not hasattr(widget, 'last_config'):
             widget.last_config = model_config
 
-        if not hasattr(widget, 'engine') or widget.last_config != model_config:
+        if not hasattr(widget, 'using_gpu'):
+            widget.using_gpu = use_gpu
+
+        # conditions where model needs to be (re)loaded
+        if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
             widget.engine = OrthoPlaneEngine(
                 store_url, model_config,
                 inference_scale=downsampling,
@@ -81,19 +87,23 @@ def stack_inference_widget():
                 confidence_thr=confidence_thr,
                 merge_iou_thr=merge_iou_thr,
                 merge_ioa_thr=merge_ioa_thr,
-                label_divisor=maximum_objects_per_class
+                label_divisor=maximum_objects_per_class,
+                use_gpu=use_gpu
             )
             widget.last_config = model_config
+            widget.using_gpu = use_gpu
         else:
             # update the parameters
-            widget.engine.inference_scale = downsampling
-            widget.engine.median_kernel_size = median_slices
-            widget.engine.nms_kernel = min_distance_object_centers
-            widget.engine.nms_threshold = center_confidence_thr
-            widget.engine.confidence_thr = confidence_thr
-            widget.engine.merge_iou_thr = merge_iou_thr
-            widget.engine.merge_ioa_thr = merge_ioa_thr
-            widget.engine.label_divisor = maximum_objects_per_class
+            widget.engine.update_params(
+                inference_scale=downsampling,
+                median_kernel_size=median_slices,
+                nms_kernel=min_distance_object_centers,
+                nms_threshold=center_confidence_thr,
+                confidence_thr=confidence_thr,
+                merge_iou_thr=merge_iou_thr,
+                merge_ioa_thr=merge_ioa_thr,
+                label_divisor=maximum_objects_per_class
+            )
 
         if not str(store_url).endswith('.zarr'):
             store_url = store_url / f'{image_layer.name}_{model_config}-napari.zarr'
@@ -148,7 +158,7 @@ def stack_inference_widget():
 
         worker = stack_inference(widget.engine, image)
         worker.returned.connect(_new_segmentation)
-        worker.returned.connect(start_consensus_worker)
+        #worker.returned.connect(start_consensus_worker)
         worker.start()
 
     return widget

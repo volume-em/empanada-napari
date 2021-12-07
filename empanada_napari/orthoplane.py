@@ -1,6 +1,7 @@
 import os
 import zarr
 import yaml
+import torch
 import torch.hub
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -15,7 +16,7 @@ from mitonet.inference.array_utils import *
 from mitonet.zarr_utils import *
 from mitonet.aggregation.consensus import merge_objects3d
 
-from empanada_napari.utils import ArrayData
+from empanada_napari.utils import ArrayData, resize, adjust_shape_by_scale
 
 from tqdm import tqdm
 
@@ -124,25 +125,16 @@ class TestEngine:
         self.engine.confidence_thr = confidence_thr
 
     def infer(self, image):
+        h, w = image.shape
+        # resize image to correct scale
+        image = resize(image, self.inference_scale)
         image = self.tfs(image=image)['image'].unsqueeze(0)
-        h, w = image.size()[2:]
         image = factor_pad(image, self.padding_factor)
             
         pan_seg = self.engine(image)
 
         # only support single scale (i.e. scale 1)
         pan_seg = pan_seg[0]
-
-        if self.inference_scale > 1:
-            if h % 2 == 0:
-                h = h * self.inference_scale
-            else:
-                h = 1 + (h - 1) * self.inference_scale
-            if w % 2 == 0:
-                w = w * self.inference_scale
-            else:
-                w = 1 + (w - 1) * self.inference_scale
-
         pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions
         pan_seg = pan_seg.cpu().numpy() # move to cpu if not already
 
@@ -164,6 +156,7 @@ class OrthoPlaneEngine:
         merge_iou_thr=0.25,
         merge_ioa_thr=0.25,
         force_connected=True,
+        use_gpu=True,
         filters=None
     ):
         if os.path.isdir(store_url):
@@ -171,22 +164,28 @@ class OrthoPlaneEngine:
         else:
             self.data = zarr.open(store_url, mode='w')
 
+        # check whether GPU is available
+        if torch.cuda.is_available() and use_gpu:
+            device = 'gpu'
+        else:
+            device = 'cpu'
+
         # load the base and render models
-        base_model = torch.hub.load_state_dict_from_url(model_config['base_model'])
-        render_model = torch.hub.load_state_dict_from_url(model_config['render_model'])
-        thing_list = model_config['thing_list']
-        self.thing_list = thing_list
+        base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
+        render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}]'])
+        self.thing_list = model_config['thing_list']
         self.labels = model_config['labels']
         self.class_names = model_config['class_names']
         self.label_divisor = label_divisor
         self.padding_factor = model_config['padding_factor']
+        self.inference_scale = inference_scale
 
         # create the inference engine
         self.engine = MultiScaleInferenceEngine(
-            base_model, render_model, thing_list, [1],
+            base_model, render_model, self.thing_list, [1],
             inference_scale, median_kernel_size, label_divisor,
             stuff_area, void_label, nms_threshold, nms_kernel,
-            confidence_thr, device='cpu'
+            confidence_thr, device=device
         )
 
         # set the image transforms
@@ -201,6 +200,33 @@ class OrthoPlaneEngine:
         self.merge_iou_thr = merge_iou_thr
         self.merge_ioa_thr = merge_ioa_thr
         self.force_connected = force_connected
+
+    def update_params(
+        self,
+        inference_scale,
+        label_divisor,
+        median_kernel_size,
+        nms_threshold,
+        nms_kernel,
+        confidence_thr,
+        merge_iou_thr,
+        merge_ioa_thr
+    ):
+        self.label_divisor = label_divisor
+        self.merge_iou_thr = merge_iou_thr
+        self.merge_ioa_thr = merge_ioa_thr
+        self.inference_scale = inference_scale
+
+        self.engine.input_scale = inference_scale
+        self.engine.label_divisor = label_divisor
+        self.engine.ks = median_kernel_size
+        self.engine.mid_idx = (median_kernel_size - 1) // 2
+        self.engine.nms_threshold = nms_threshold
+        self.engine.nms_kernel = nms_kernel
+        self.engine.confidence_thr = confidence_thr
+
+        # reset median queue for good measure
+        self.engine.reset()
 
     def create_matchers(self):
         matchers = []
@@ -230,7 +256,7 @@ class OrthoPlaneEngine:
     def infer_on_axis(self, volume, axis_name):
         axis = self.axes[axis_name]
         # create the dataloader
-        dataset = ArrayData(volume, axis, self.tfs)
+        dataset = ArrayData(volume, self.inference_scale, axis, self.tfs)
         dataloader = DataLoader(
             dataset, batch_size=1, shuffle=False, pin_memory=False, 
             drop_last=False, num_workers=0
@@ -252,9 +278,12 @@ class OrthoPlaneEngine:
         print(f'Predicting {axis_name}...')
 
         fill_index = 0
+        imshape = list(volume.shape)
+        del imshape[axis]
+        h, w = imshape
+
         for batch in tqdm(dataloader, total=len(dataloader)):
             image = batch['image']
-            h, w = image.size()[2:]
             image = factor_pad(image, self.padding_factor)
             
             pan_seg = self.engine(image)

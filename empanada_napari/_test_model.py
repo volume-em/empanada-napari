@@ -124,22 +124,6 @@ def test_widget():
         if type(image2d) == da.core.Array:
             image2d = image2d.compute()
 
-        if downsampling > 1:
-            # cv2 expects (w, h) for image size, numpy gives
-            # (h, w) for image shape, hence [::-1]
-            h, w = image2d.shape
-            if h % 2 == 1:
-                dh = 1 + (h - 1) // downsampling
-            else:
-                dh = h // 2
-
-            if w % 2 == 1:
-                dw = 1 + (w - 1) // downsampling
-            else:
-                dw = w // 2
-
-            image2d = cv2.resize(image2d, (dw, dh), cv2.INTER_LINEAR)
-
         test_worker = test_model(widget.engine, image2d, axis, plane)
         test_worker.returned.connect(_show_test_result)
         test_worker.start()
