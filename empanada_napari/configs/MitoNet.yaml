@@ -1,12 +1,17 @@
-base_model: https://www.dropbox.com/s/rer5rqqs4i4wuuf/mmm_base_model_quantized.pth?dl=1
+base_model_cpu: https://www.dropbox.com/s/rer5rqqs4i4wuuf/mmm_base_model_quantized.pth?dl=1
+render_model_cpu: https://www.dropbox.com/s/fmszp8do5dqhip7/point_rend_model.pth?dl=1
+
 class_names:
 - mito
+
 labels:
 - 1
+
 norms:
   mean: 0.57287007
   std: 0.12740536
+
 padding_factor: 16
-render_model: https://www.dropbox.com/s/fmszp8do5dqhip7/point_rend_model.pth?dl=1
+
 thing_list:
 - 1
