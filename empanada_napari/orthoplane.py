@@ -172,7 +172,7 @@ class OrthoPlaneEngine:
 
         # load the base and render models
         base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
-        render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}]'])
+        render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
         self.thing_list = model_config['thing_list']
         self.labels = model_config['labels']
         self.class_names = model_config['class_names']
