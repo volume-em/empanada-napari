@@ -54,7 +54,8 @@ def test_widget():
         min_distance_object_centers=dict(widget_type='Slider', value=3, min=3, max=21, label='Minimum distance between object centers.'),
         confidence_thr=dict(widget_type='FloatSlider', value=0.5, min=0.1, max=0.9, step=0.1, label='Confidence Threshold'),
         center_confidence_thr=dict(widget_type='FloatSlider', value=0.1, min=0.1, max=0.9, label='Center Confidence Threshold'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value=1000, label='Max objects per class'),
+        maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
+        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -65,6 +66,7 @@ def test_widget():
         confidence_thr,
         center_confidence_thr,
         maximum_objects_per_class,
+        use_gpu
     ):      
         # load the model config
         model_config = load_config(model_configs[model_config])
@@ -73,16 +75,21 @@ def test_widget():
         if not hasattr(widget, 'last_config'):
             widget.last_config = model_config
 
-        if not hasattr(widget, 'engine') or widget.last_config != model_config:
+        if not hasattr(widget, 'using_gpu'):
+            widget.using_gpu = use_gpu
+
+        if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
             widget.engine = TestEngine(
                 model_config, 
                 inference_scale=downsampling,
                 nms_kernel=min_distance_object_centers, 
                 nms_threshold=center_confidence_thr,
                 confidence_thr=confidence_thr,
-                label_divisor=maximum_objects_per_class
+                label_divisor=maximum_objects_per_class,
+                use_gpu=use_gpu
             )
             widget.last_config = model_config
+            widget.using_gpu = use_gpu
         else:
             # update the parameters of the engine
             # without reloading the model

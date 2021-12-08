@@ -23,7 +23,14 @@ from tqdm import tqdm
 from napari.qt.threading import thread_worker
 
 @thread_worker
-def tracker_consensus(trackers, store_url, model_config, label_divisor=1000):
+def tracker_consensus(
+    trackers, 
+    store_url, 
+    model_config, 
+    label_divisor=1000,
+    min_size=200,
+    min_extent=4
+):
     labels = model_config['labels']
     class_names = model_config['class_names']
     data = zarr.open(store_url)
@@ -48,10 +55,9 @@ def tracker_consensus(trackers, store_url, model_config, label_divisor=1000):
         else:
             consensus_tracker = class_trackers[0]
 
-        # apply filters to final merged segmentation
-        #if filter_names:
-        #    for filt,kwargs in zip(filter_names, filter_kwargs):
-        #        filters.__dict__[filt](consensus_tracker, **kwargs)   
+        # inplace apply filters to final merged segmentation
+        filters.remove_small_objects(consensus_tracker, min_size=min_size)
+        filters.remove_pancakes(consensus_tracker, min_span=min_extent)
 
         # decode and fill the instances
         consensus_vol = data.create_dataset(
@@ -72,10 +78,17 @@ class TestEngine:
         nms_threshold=0.1,
         nms_kernel=3,
         confidence_thr=0.3,
+        use_gpu=True
     ):
+        # check whether GPU is available
+        if torch.cuda.is_available() and use_gpu:
+            device = 'gpu'
+        else:
+            device = 'cpu'
+
         # load the base and render models
-        base_model = torch.hub.load_state_dict_from_url(model_config['base_model'])
-        render_model = torch.hub.load_state_dict_from_url(model_config['render_model'])
+        base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
+        render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
 
         self.thing_list = model_config['thing_list']
         self.labels = model_config['labels']
@@ -89,7 +102,7 @@ class TestEngine:
             base_model, render_model, self.thing_list, [1],
             inference_scale, 1, label_divisor,
             stuff_area, void_label, nms_threshold, nms_kernel,
-            confidence_thr, device='cpu'
+            confidence_thr, device=device
         )
 
         # set the image transforms

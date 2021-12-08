@@ -54,7 +54,9 @@ def orthoplane_inference_widget():
         center_confidence_thr=dict(widget_type='FloatSlider', value=0.1, min=0.1, max=0.9, label='Center Confidence Threshold'),
         merge_iou_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label='IoU Threshold'),
         merge_ioa_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label='IoA Threshold'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value=1000, label='Max objects per class'),
+        min_size=dict(widget_type='LineEdit', value=500, label='Minimum object size in voxels'),
+        min_extent=dict(widget_type='LineEdit', value=4, label='Minimum extent of object bounding box'),
+        maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
     )
     def widget(
@@ -69,11 +71,15 @@ def orthoplane_inference_widget():
         center_confidence_thr,
         merge_iou_thr,
         merge_ioa_thr,
+        min_size,
+        min_extent,
         maximum_objects_per_class,
         use_gpu
     ):
         # load the model config
         model_config = load_config(model_configs[model_config])
+        min_size = int(min_size)
+        min_extent = int(min_extent)
         maximum_objects_per_class = int(maximum_objects_per_class)
 
         if not hasattr(widget, 'last_config'):
@@ -152,7 +158,8 @@ def orthoplane_inference_widget():
                 
         def start_consensus_worker(trackers_dict):
             consensus_worker = tracker_consensus(
-                trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class
+                trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
+                min_size=min_size, min_extent=min_extent
             )
             consensus_worker.yielded.connect(_new_consensus)
             consensus_worker.start()
