@@ -1,5 +1,6 @@
 import os
 import yaml
+import math
 import cv2
 import dask.array as da
 from torch.utils.data import Dataset
@@ -63,8 +64,8 @@ def resize(image, scale_factor=1):
 
     # cv2 expects (w, h) for image size
     h, w = image.shape
-    dh = h // scale_factor
-    dw = w // scale_factor
+    dh = math.ceil(h / scale_factor)
+    dw = math.ceil(w / scale_factor)
 
     image = cv2.resize(image, (dw, dh), cv2.INTER_LINEAR)
 

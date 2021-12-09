@@ -316,7 +316,7 @@ class OrthoPlaneEngine:
                     pan_seg = matcher.initialize_target(pan_seg)
                 else:
                     pan_seg = matcher(pan_seg)
-            
+
             # store the result
             stack = zarr_put3d(stack, fill_index, pan_seg, axis)
             

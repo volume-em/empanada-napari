@@ -53,7 +53,7 @@ def test_widget():
         downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Downsampling before inference', tooltip='Downsampling factor to apply before inference'),
         min_distance_object_centers=dict(widget_type='Slider', value=3, min=3, max=21, label='Minimum distance between object centers.'),
         confidence_thr=dict(widget_type='FloatSlider', value=0.5, min=0.1, max=0.9, step=0.1, label='Confidence Threshold'),
-        center_confidence_thr=dict(widget_type='FloatSlider', value=0.1, min=0.1, max=0.9, label='Center Confidence Threshold'),
+        center_confidence_thr=dict(widget_type='FloatSlider', value=0.1, min=1e-5, max=0.9, label='Center Confidence Threshold'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
     )

@@ -38,6 +38,7 @@ def orthoplane_inference_widget():
         for axis_name in ['xy', 'xz', 'yz']:
             stack, trackers = engine.infer_on_axis(volume, axis_name)
             trackers_dict[axis_name] = trackers
+            print(f'{axis_name} instances: {len(trackers[0].instances.keys())}')
             yield stack, axis_name
 
         return trackers_dict
