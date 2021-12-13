@@ -22,24 +22,102 @@ from tqdm import tqdm
 
 from napari.qt.threading import thread_worker
 
+def instance_relabel(tracker):
+    instance_id = 1
+    instances = {}
+    for instance_attr in tracker.instances.values():
+        # vote on indices that should belong to an object
+        runs_cat = np.stack([
+            instance_attr['starts'], instance_attr['runs']
+        ], axis=1)
+
+        sort_idx = np.argsort(runs_cat[:, 0], kind='stable')
+        runs_cat = runs_cat[sort_idx]
+
+        # TODO: technically this could break the zarr_fill_instances function
+        # if an object has a pixel in the bottom right corner of the Nth z slice
+        # and a pixel in the top left corner of the N+1th z slice
+        instances[instance_id] = {}
+        instances[instance_id]['box'] = instance_attr['box']
+        instances[instance_id]['starts'] = runs_cat[:, 0]
+        instances[instance_id]['runs'] = runs_cat[:, 1]
+        instance_id += 1
+
+    return instances
+
 @thread_worker
-def tracker_consensus(
-    trackers, 
-    store_url, 
-    model_config, 
+def stack_postprocessing(
+    trackers,
+    store_url,
+    model_config,
     label_divisor=1000,
     min_size=200,
     min_extent=4
 ):
     labels = model_config['labels']
     class_names = model_config['class_names']
-    data = zarr.open(store_url)
+    if store_url is not None:
+        data = zarr.open(store_url)
+    else:
+        data = None
+
+    # create the final instance segmentations
+    for class_id, class_name in zip(labels, class_names):
+        # get the relevant trackers for the class_label
+        print(f'Creating stack segmentation for class {class_name}...')
+
+        class_tracker = None
+        for axis_name, axis_trackers in trackers.items():
+            for tracker in axis_trackers:
+                if tracker.class_id == class_id:
+                    class_tracker = tracker
+                    break
+
+        shape3d = class_tracker.shape3d
+
+        # merge instances from orthoplane inference
+        stack_tracker = InstanceTracker(class_id, label_divisor, shape3d, 'xy')
+        stack_tracker.instances = instance_relabel(class_tracker)
+
+        # inplace apply filters to final merged segmentation
+        filters.remove_small_objects(stack_tracker, min_size=min_size)
+        filters.remove_pancakes(stack_tracker, min_span=min_extent)
+
+        print('N objects', len(stack_tracker.instances.keys()))
+
+        # decode and fill the instances
+        if data is not None:
+            stack_vol = data.create_dataset(
+                f'{class_name}_pred', shape=shape3d, dtype=np.uint64,
+                overwrite=True, chunks=(1, None, None)
+            )
+        else:
+            stack_vol = np.zeros(shape3d, dtype=np.uint64)
+
+        zarr_fill_instances(stack_vol, stack_tracker.instances)
+        yield stack_vol, class_name
+
+@thread_worker
+def tracker_consensus(
+    trackers,
+    store_url,
+    model_config,
+    label_divisor=1000,
+    min_size=200,
+    min_extent=4
+):
+    labels = model_config['labels']
+    class_names = model_config['class_names']
+    if store_url is not None:
+        data = zarr.open(store_url)
+    else:
+        data = None
 
     # create the final instance segmentations
     for class_id, class_name in zip(labels, class_names):
         # get the relevant trackers for the class_label
         print(f'Creating consensus segmentation for class {class_name}...')
-        
+
         class_trackers = []
         for axis_name, axis_trackers in trackers.items():
             for tracker in axis_trackers:
@@ -47,23 +125,26 @@ def tracker_consensus(
                     class_trackers.append(tracker)
 
         shape3d = class_trackers[0].shape3d
-        
-        # merge instances from orthoplane inference if applicable
-        if len(class_trackers) > 1:
-            consensus_tracker = InstanceTracker(class_id, label_divisor, shape3d, 'xy')
-            consensus_tracker.instances = merge_objects3d(class_trackers)
-        else:
-            consensus_tracker = class_trackers[0]
+
+        # merge instances from orthoplane inference
+        consensus_tracker = InstanceTracker(class_id, label_divisor, shape3d, 'xy')
+        consensus_tracker.instances = merge_objects3d(class_trackers)
 
         # inplace apply filters to final merged segmentation
         filters.remove_small_objects(consensus_tracker, min_size=min_size)
         filters.remove_pancakes(consensus_tracker, min_span=min_extent)
 
+        print('N objects', len(consensus_tracker.instances.keys()))
+
         # decode and fill the instances
-        consensus_vol = data.create_dataset(
-            f'{class_name}_pred', shape=shape3d, dtype=np.uint64,
-            overwrite=True, chunks=(1, None, None)
-        )
+        if data is not None:
+            consensus_vol = data.create_dataset(
+                f'{class_name}_pred', shape=shape3d, dtype=np.uint64,
+                overwrite=True, chunks=(1, None, None)
+            )
+        else:
+            consensus_vol = np.zeros(shape3d, dtype=np.uint64)
+
         zarr_fill_instances(consensus_vol, consensus_tracker.instances)
         yield consensus_vol, class_name
 
@@ -143,7 +224,7 @@ class TestEngine:
         image = resize(image, self.inference_scale)
         image = self.tfs(image=image)['image'].unsqueeze(0)
         image = factor_pad(image, self.padding_factor)
-            
+
         pan_seg = self.engine(image)
 
         # only support single scale (i.e. scale 1)
@@ -172,10 +253,10 @@ class OrthoPlaneEngine:
         use_gpu=True,
         filters=None
     ):
-        if os.path.isdir(store_url):
-            self.data = zarr.open(store_url, mode='r+')
-        else:
+        if store_url is not None:
             self.data = zarr.open(store_url, mode='w')
+        else:
+            self.data = None
 
         # check whether GPU is available
         if torch.cuda.is_available() and use_gpu:
@@ -216,6 +297,7 @@ class OrthoPlaneEngine:
 
     def update_params(
         self,
+        store_url,
         inference_scale,
         label_divisor,
         median_kernel_size,
@@ -225,6 +307,12 @@ class OrthoPlaneEngine:
         merge_iou_thr,
         merge_ioa_thr
     ):
+
+        if store_url is not None:
+            self.data = zarr.open(store_url, mode='w')
+        else:
+            self.data = None
+
         self.label_divisor = label_divisor
         self.merge_iou_thr = merge_iou_thr
         self.merge_ioa_thr = merge_ioa_thr
@@ -246,7 +334,7 @@ class OrthoPlaneEngine:
         for thing_class in self.thing_list:
             matchers.append(
                 SequentialMatcher(
-                    thing_class, self.label_divisor, self.merge_iou_thr, 
+                    thing_class, self.label_divisor, self.merge_iou_thr,
                     self.merge_ioa_thr, force_connected=self.force_connected
                 )
             )
@@ -256,13 +344,18 @@ class OrthoPlaneEngine:
     def create_panoptic_stack(self, axis_name, shape3d):
         # faster IO with chunking only along
         # the given axis, orthogonal viewing is slow though
-        chunks = [None, None, None]
-        chunks[self.axes[axis_name]] = 1
-        chunks = tuple(chunks)
-        stack = self.data.create_dataset(
-            f'panoptic_{axis_name}', shape=shape3d, 
-            dtype=np.uint64, chunks=chunks, overwrite=True
-        )
+        if self.data is not None:
+            chunks = [None, None, None]
+            chunks[self.axes[axis_name]] = 1
+            chunks = tuple(chunks)
+            stack = self.data.create_dataset(
+                f'panoptic_{axis_name}', shape=shape3d,
+                dtype=np.uint64, chunks=chunks, overwrite=True
+            )
+
+        else:
+            # we'll use uint32 for in memory segs
+            stack = np.zeros(shape3d, dtype=np.uint64)
 
         return stack
 
@@ -271,15 +364,15 @@ class OrthoPlaneEngine:
         # create the dataloader
         dataset = ArrayData(volume, self.inference_scale, axis, self.tfs)
         dataloader = DataLoader(
-            dataset, batch_size=1, shuffle=False, pin_memory=False, 
+            dataset, batch_size=1, shuffle=False, pin_memory=False,
             drop_last=False, num_workers=0
         )
 
         # create the trackers
-        # create a separate tracker for 
+        # create a separate tracker for
         # each prediction axis and each segmentation class
         trackers = [
-            InstanceTracker(label, self.label_divisor, volume.shape, axis_name) 
+            InstanceTracker(label, self.label_divisor, volume.shape, axis_name)
             for label in self.labels
         ]
 
@@ -298,7 +391,7 @@ class OrthoPlaneEngine:
         for batch in tqdm(dataloader, total=len(dataloader)):
             image = batch['image']
             image = factor_pad(image, self.padding_factor)
-            
+
             pan_seg = self.engine(image)
             if pan_seg is None:
                 # building the queue
@@ -308,7 +401,7 @@ class OrthoPlaneEngine:
             pan_seg = pan_seg[0]
             pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions
             pan_seg = pan_seg.cpu().numpy() # move to cpu if not already
-            
+
             # update the panoptic segmentations for each
             # thing class by passing it through matchers
             for matcher in matchers:
@@ -319,10 +412,10 @@ class OrthoPlaneEngine:
 
             # store the result
             stack = zarr_put3d(stack, fill_index, pan_seg, axis)
-            
+
             # increment the fill_index
             fill_index += 1
-            
+
         # if inference engine has a queue,
         # then there will be a few remaining
         # segmentations to fill in
@@ -332,13 +425,13 @@ class OrthoPlaneEngine:
                 pan_seg = pan_seg[0]
                 pan_seg = pan_seg.squeeze()[:h, :w]
                 pan_seg = pan_seg.cpu().numpy()
-                
+
                 for matcher in matchers:
                     pan_seg = matcher(pan_seg)
-                    
+
                 stack = zarr_put3d(stack, fill_index, pan_seg, axis)
                 fill_index += 1
-                
+
         print(f'Propagating labels backward...')
 
         # set the matchers to not assign new labels
@@ -351,16 +444,16 @@ class OrthoPlaneEngine:
         for rev_idx in tqdm(rev_indices):
             rev_idx = rev_idx.item()
             pan_seg = zarr_take3d(stack, rev_idx, axis)
-            
+
             for matcher in matchers:
                 pan_seg = matcher(pan_seg)
 
             stack = zarr_put3d(stack, rev_idx, pan_seg, axis)
-            
+
             # track each instance for each class
             for tracker in trackers:
                 tracker.update(pan_seg, rev_idx)
-            
+
         # finish tracking
         for tracker in trackers:
             tracker.finish()
@@ -368,6 +461,3 @@ class OrthoPlaneEngine:
         self.engine.reset()
 
         return stack, trackers
-
-        
-
