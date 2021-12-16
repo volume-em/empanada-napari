@@ -22,6 +22,8 @@ from tqdm import tqdm
 
 from napari.qt.threading import thread_worker
 
+import torch.multiprocessing as mp
+
 def instance_relabel(tracker):
     instance_id = 1
     instances = {}
@@ -234,6 +236,22 @@ class TestEngine:
 
         return pan_seg
 
+def run_forward_matchers(stack, axis, matchers, queue):
+    while True:
+        fill_index, pan_seg = queue.get()
+        if pan_seg is None:
+            continue
+        elif isinstance(pan_seg, str):
+            break
+        else:
+            for matcher in matchers:
+                if matcher.target_seg is None:
+                    pan_seg = matcher.initialize_target(pan_seg)
+                else:
+                    pan_seg = matcher(pan_seg)
+                    
+            zarr_put3d(stack, fill_index, pan_seg, axis)
+
 class OrthoPlaneEngine:
     def __init__(
         self,
@@ -381,6 +399,10 @@ class OrthoPlaneEngine:
         # output stack
         stack = self.create_panoptic_stack(axis_name, volume.shape)
 
+        queue = mp.Queue()
+        matcher_proc = mp.Process(target=run_forward_matchers, args=(stack, axis, matchers, queue))
+        matcher_proc.start()
+
         print(f'Predicting {axis_name}...')
 
         fill_index = 0
@@ -388,6 +410,7 @@ class OrthoPlaneEngine:
         del imshape[axis]
         h, w = imshape
 
+        fill_index = 0
         for batch in tqdm(dataloader, total=len(dataloader)):
             image = batch['image']
             image = factor_pad(image, self.padding_factor)
@@ -395,41 +418,21 @@ class OrthoPlaneEngine:
             pan_seg = self.engine(image)
             if pan_seg is None:
                 # building the queue
+                queue.put((fill_index, pan_seg))
                 continue
-
-            # only support single scale (i.e. scale 1)
-            pan_seg = pan_seg[0]
-            pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions
-            pan_seg = pan_seg.cpu().numpy() # move to cpu if not already
-
-            # update the panoptic segmentations for each
-            # thing class by passing it through matchers
-            for matcher in matchers:
-                if matcher.target_seg is None:
-                    pan_seg = matcher.initialize_target(pan_seg)
-                else:
-                    pan_seg = matcher(pan_seg)
-
-            # store the result
-            stack = zarr_put3d(stack, fill_index, pan_seg, axis)
-
-            # increment the fill_index
-            fill_index += 1
-
-        # if inference engine has a queue,
-        # then there will be a few remaining
-        # segmentations to fill in
+            else:
+                # only support single scale (i.e. scale 1)
+                pan_seg = pan_seg[0]
+                pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions
+                queue.put((fill_index, pan_seg.cpu().numpy()))
+                fill_index += 1
+                
         final_segs = self.engine.end()
         if final_segs:
             for i, pan_seg in enumerate(final_segs):
                 pan_seg = pan_seg[0]
-                pan_seg = pan_seg.squeeze()[:h, :w]
-                pan_seg = pan_seg.cpu().numpy()
-
-                for matcher in matchers:
-                    pan_seg = matcher(pan_seg)
-
-                stack = zarr_put3d(stack, fill_index, pan_seg, axis)
+                pan_seg = pan_seg.squeeze()[:h, :w] # remove padding
+                queue.put((fill_index, pan_seg.cpu().numpy()))
                 fill_index += 1
 
         print(f'Propagating labels backward...')
@@ -440,15 +443,20 @@ class OrthoPlaneEngine:
             matcher.assign_new = False
             matcher.force_connected = False
 
-        rev_indices = np.arange(0, stack.shape[axis] - 1)[::-1]
+        rev_indices = np.arange(0, stack.shape[axis])[::-1]
         for rev_idx in tqdm(rev_indices):
             rev_idx = rev_idx.item()
-            pan_seg = zarr_take3d(stack, rev_idx, axis)
-
+            pan_seg = zarr_take3d(stack, rev_idx, axis)    
+            
             for matcher in matchers:
-                pan_seg = matcher(pan_seg)
-
-            stack = zarr_put3d(stack, rev_idx, pan_seg, axis)
+                if matcher.target_seg is None:
+                    pan_seg = matcher.initialize_target(pan_seg)
+                else:
+                    pan_seg = matcher(pan_seg)
+            
+            # leave the last slice in the stack alone
+            if rev_idx < (stack.shape[axis] - 1):
+                stack = zarr_put3d(stack, rev_idx, pan_seg, axis)
 
             # track each instance for each class
             for tracker in trackers:
