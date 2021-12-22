@@ -56,6 +56,7 @@ def test_widget():
         center_confidence_thr=dict(widget_type='FloatSlider', value=0.1, min=1e-5, max=0.9, label='Center Confidence Threshold'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
+        semantic_only=dict(widget_type='CheckBox', text='Semantic segmentation only?', value=False, tooltip='Only run semantic segmentation for all classes.'),
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -66,7 +67,8 @@ def test_widget():
         confidence_thr,
         center_confidence_thr,
         maximum_objects_per_class,
-        use_gpu
+        use_gpu,
+        semantic_only,
     ):      
         # load the model config
         model_config = load_config(model_configs[model_config])
@@ -86,6 +88,7 @@ def test_widget():
                 nms_threshold=center_confidence_thr,
                 confidence_thr=confidence_thr,
                 label_divisor=maximum_objects_per_class,
+                semantic_only=semantic_only,
                 use_gpu=use_gpu
             )
             widget.last_config = model_config
@@ -98,16 +101,13 @@ def test_widget():
                 label_divisor=maximum_objects_per_class,
                 nms_threshold=center_confidence_thr,
                 nms_kernel=min_distance_object_centers,
-                confidence_thr=confidence_thr
+                confidence_thr=confidence_thr,
+                semantic_only=semantic_only
             )
 
         def _get_current_slice(image_layer):
             axis = viewer.dims.order[0]
             cursor_pos = viewer.cursor.position
-            plane = int(image_layer.world_to_data(cursor_pos)[axis])
-
-            slices = [slice(None), slice(None), slice(None)]
-            slices[axis] = plane
 
             # handle multiscale by taking highest resolution level
             image = image_layer.data
@@ -115,14 +115,27 @@ def test_widget():
                 print(f'Multiscale image selected, using highest resolution level!')                    
                 image = image[0]
 
+            if image.ndim == 3:
+                plane = int(image_layer.world_to_data(cursor_pos)[axis])
+
+                slices = [slice(None), slice(None), slice(None)]
+                slices[axis] = plane
+            else:
+                slices = [slice(None), slice(None)]
+                axis = None
+                plane = None
+
             return image[tuple(slices)], axis, plane
 
         def _show_test_result(*args):
             seg, axis, plane = args[0]
 
-            seg = np.expand_dims(seg, axis=axis)
-            translate = [0, 0, 0]
-            translate[axis] = plane
+            if axis is not None and plane is not None:
+                seg = np.expand_dims(seg, axis=axis)
+                translate = [0, 0, 0]
+                translate[axis] = plane
+            else:
+                translate = [0, 0]
 
             viewer.add_labels(seg, name=f'Test Seg', visible=True, translate=tuple(translate))
 
@@ -139,4 +152,4 @@ def test_widget():
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def test_dock_widget():
-    return test_widget, {'name': 'Parameter Testing'}
+    return test_widget, {'name': '2D Inference (Parameter Testing)'}

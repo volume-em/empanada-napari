@@ -161,6 +161,7 @@ class TestEngine:
         nms_threshold=0.1,
         nms_kernel=3,
         confidence_thr=0.3,
+        semantic_only=False,
         use_gpu=True
     ):
         # check whether GPU is available
@@ -180,9 +181,14 @@ class TestEngine:
         self.padding_factor = model_config['padding_factor']
         self.inference_scale = inference_scale
 
+        if semantic_only:
+            thing_list = []
+        else:
+            thing_list = self.thing_list
+
         # create the inference engine
         self.engine = MultiScaleInferenceEngine(
-            base_model, render_model, self.thing_list, [1],
+            base_model, render_model, thing_list, [1],
             inference_scale, 1, label_divisor,
             stuff_area, void_label, nms_threshold, nms_kernel,
             confidence_thr, device=device
@@ -202,7 +208,8 @@ class TestEngine:
         label_divisor,
         nms_threshold,
         nms_kernel,
-        confidence_thr
+        confidence_thr,
+        semantic_only=False
     ):
         # note that input_scale is the variable name in the engine
         self.inference_scale = inference_scale
@@ -219,6 +226,11 @@ class TestEngine:
 
         self.confidence_thr = confidence_thr
         self.engine.confidence_thr = confidence_thr
+
+        if semantic_only:
+            self.engine.thing_list = []
+        else:
+            self.engine.thing_list = self.thing_list
 
     def infer(self, image):
         h, w = image.shape
