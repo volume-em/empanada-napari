@@ -235,7 +235,7 @@ def main_worker(gpu, config, axis_name, volume, data_store):
     # create the dataloader
     shape = volume.shape
     dataset = ArrayData(volume, config['engine_params']['inference_scale'], axis, eval_tfs)
-    sampler = DistributedSampler(dataset)
+    sampler = DistributedSampler(dataset, shuffle=False)
     dataloader = DataLoader(
         dataset, batch_size=1, shuffle=False, pin_memory=True,
         drop_last=False, num_workers=0, sampler=sampler
@@ -426,6 +426,7 @@ class MultiGPUOrthoplaneEngine:
         stack = self.data[f'panoptic_{axis_name}']
         
         # run backward matching and tracking
+        print('Propagating labels backward...')
         axis = self.config['axes'][axis_name]
         matchers = self.create_matchers()
         
@@ -442,9 +443,10 @@ class MultiGPUOrthoplaneEngine:
         zarr_proc = mp.Process(target=run_zarr_put, args=(zarr_queue, stack, axis))
         zarr_proc.start()
         
-        #tracker_queue = mp.Queue()
-        #tracker_proc = mp.Process(target=run_tracker, args=(tracker_queue, trackers))
-        #tracker_proc.start()
+        tracker_queue = mp.Queue()
+        tracker_out, tracker_in = mp.Pipe()
+        tracker_proc = mp.Process(target=run_tracker, args=(tracker_queue, trackers, tracker_in))
+        tracker_proc.start()
 
         rev_indices = np.arange(0, stack.shape[axis])[::-1]
         for rev_idx in tqdm(rev_indices):
@@ -462,19 +464,20 @@ class MultiGPUOrthoplaneEngine:
                 zarr_queue.put((rev_idx, pan_seg))
 
             # track each instance for each class
-            for tracker in trackers:
-                tracker.update(pan_seg, rev_idx)
-            #tracker_queue.put((rev_idx, pan_seg))
+            #for tracker in trackers:
+            #    tracker.update(pan_seg, rev_idx)
+            tracker_queue.put((rev_idx, pan_seg))
                 
         zarr_queue.put((None, None))
         zarr_proc.join()
         
-        #tracker_queue.put((None, None))
-        #tracker_proc.join()
+        tracker_queue.put((None, None))
+        trackers = tracker_out.recv()[0]
+        tracker_proc.join()
 
         return stack, trackers
         
-def run_tracker(queue, trackers):
+def run_tracker(queue, trackers, tracker_in):
     while True:
         index, pan_seg = queue.get()
         if index is None:
@@ -486,6 +489,9 @@ def run_tracker(queue, trackers):
     # finish tracking
     for tracker in trackers:
         tracker.finish()
+        
+    tracker_in.send([trackers])
+    tracker_in.close()
         
 def run_zarr_put(queue, stack, axis):
     while True:
