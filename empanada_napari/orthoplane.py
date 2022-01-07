@@ -170,9 +170,16 @@ class TestEngine:
         else:
             device = 'cpu'
 
-        # load the base and render models
-        base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
-        render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
+        # load the base and render models from file or url
+        if os.path.isfile(model_config[f'base_model_{device}']):
+            base_model = torch.jit.load(model_config[f'base_model_{device}'])
+        else:
+            base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
+
+        if os.path.isfile(model_config[f'render_model_{device}']):
+            render_model = torch.jit.load(model_config[f'render_model_{device}'])
+        else:
+            render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
 
         self.thing_list = model_config['thing_list']
         self.labels = model_config['labels']
@@ -261,7 +268,7 @@ def run_forward_matchers(stack, axis, matchers, queue):
                     pan_seg = matcher.initialize_target(pan_seg)
                 else:
                     pan_seg = matcher(pan_seg)
-                    
+
             zarr_put3d(stack, fill_index, pan_seg, axis)
 
 class OrthoPlaneEngine:
@@ -438,7 +445,7 @@ class OrthoPlaneEngine:
                 pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions
                 queue.put((fill_index, pan_seg.cpu().numpy()))
                 fill_index += 1
-                
+
         final_segs = self.engine.end()
         if final_segs:
             for i, pan_seg in enumerate(final_segs):
@@ -458,14 +465,14 @@ class OrthoPlaneEngine:
         rev_indices = np.arange(0, stack.shape[axis])[::-1]
         for rev_idx in tqdm(rev_indices):
             rev_idx = rev_idx.item()
-            pan_seg = zarr_take3d(stack, rev_idx, axis)    
-            
+            pan_seg = zarr_take3d(stack, rev_idx, axis)
+
             for matcher in matchers:
                 if matcher.target_seg is None:
                     pan_seg = matcher.initialize_target(pan_seg)
                 else:
                     pan_seg = matcher(pan_seg)
-            
+
             # leave the last slice in the stack alone
             if rev_idx < (stack.shape[axis] - 1):
                 stack = zarr_put3d(stack, rev_idx, pan_seg, axis)

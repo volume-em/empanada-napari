@@ -47,14 +47,14 @@ def _get_global_gloo_group():
         return dist.new_group(backend="gloo")
     else:
         return dist.group.WORLD
-            
+
 def get_world_size() -> int:
     if not dist.is_available():
         return 1
     if not dist.is_initialized():
         return 1
     return dist.get_world_size()
-            
+
 def _serialize_to_tensor(data, group):
     backend = dist.get_backend(group)
     assert backend in ["gloo", "nccl"]
@@ -99,7 +99,7 @@ def all_gather(data, group=None):
     tensor_list = [
         torch.empty((max_size,), dtype=torch.uint8, device=tensor.device) for _ in range(world_size)
     ]
-    
+
     dist.all_gather(tensor_list, tensor, group=group)
 
     data_list = []
@@ -114,7 +114,7 @@ def get_panoptic_seg(sem, instance_cells, config):
     thing_list = config['engine_params']['thing_list']
     stuff_area = config['engine_params']['stuff_area']
     void_label = config['engine_params']['void_label']
-    
+
     # keep only label for instance classes
     instance_seg = torch.zeros_like(sem)
     for thing_class in thing_list:
@@ -127,7 +127,7 @@ def get_panoptic_seg(sem, instance_cells, config):
         sem, instance_seg, label_divisor, thing_list,
         stuff_area, void_label
     )
-    
+
     return pan_seg
 
 def run_forward_matchers(stack, axis, matchers, queue, config):
@@ -135,20 +135,20 @@ def run_forward_matchers(stack, axis, matchers, queue, config):
     confidence_thr = config['engine_params']['confidence_thr']
     median_kernel_size = config['engine_params']['median_kernel_size']
     mid_idx = (median_kernel_size - 1) // 2
-    
+
     fill_index = 0
     sem_queue = deque(maxlen=median_kernel_size)
     cell_queue = deque(maxlen=median_kernel_size)
 
     while True:
         sem, cells = queue.get()
-        
+
         if sem is None:
             break
-        
+
         sem_queue.append(sem)
         cell_queue.append(cells)
-        
+
         nq = len(sem_queue)
         if nq <= mid_idx:
             # take last item in the queue
@@ -157,7 +157,7 @@ def run_forward_matchers(stack, axis, matchers, queue, config):
         elif nq > mid_idx and nq < median_kernel_size:
             # continue while the queue builds
             median_sem = None
-        else: 
+        else:
             # nq == median_kernel_size
             # use the middle item in the queue
             # with the median segmentation probs
@@ -165,7 +165,7 @@ def run_forward_matchers(stack, axis, matchers, queue, config):
                 torch.cat(list(sem_queue), dim=0), dim=0, keepdim=True
             ).values
             cells = cell_queue[mid_idx]
-            
+
         # harden the segmentation to (N, 1, H, W)
         if median_sem is not None:
             if median_sem.size(1) > 1: # multiclass segmentation
@@ -176,7 +176,7 @@ def run_forward_matchers(stack, axis, matchers, queue, config):
             pan_seg = get_panoptic_seg(median_sem, cells, config)
         else:
             pan_seg = None
-        
+
         if pan_seg is None:
             continue
         else:
@@ -186,10 +186,10 @@ def run_forward_matchers(stack, axis, matchers, queue, config):
                     pan_seg = matcher.initialize_target(pan_seg)
                 else:
                     pan_seg = matcher(pan_seg)
-                    
+
             zarr_put3d(stack, fill_index, pan_seg, axis)
             fill_index += 1
-            
+
     # fill out the final segmentations
     for sem,cells in zip(list(sem_queue)[mid_idx + 1:], list(cell_queue)[mid_idx + 1:]):
         if sem.size(1) > 1: # multiclass segmentation
@@ -199,39 +199,47 @@ def run_forward_matchers(stack, axis, matchers, queue, config):
 
         pan_seg = get_panoptic_seg(sem, cells, config)
         pan_seg = pan_seg.squeeze().numpy()
-        
+
         for matcher in matchers:
             if matcher.target_seg is None:
                 pan_seg = matcher.initialize_target(pan_seg)
             else:
                 pan_seg = matcher(pan_seg)
-    
+
         zarr_put3d(stack, fill_index, pan_seg, axis)
         fill_index += 1
-        
+
     return None
 
 def main_worker(gpu, config, axis_name, volume, data_store):
     config['gpu'] = gpu
     rank = gpu
     axis = config['axes'][axis_name]
-    
+
     dist.init_process_group(backend='nccl', init_method='tcp://localhost:10001',
                             world_size=config['world_size'], rank=rank)
-    
-    
-    # load models and set engine class
-    base_model = torch.hub.load_state_dict_from_url(config['base_model_url'])
-    render_model = torch.hub.load_state_dict_from_url(config['render_model_url'])
+
+
+    # load models and set engine class from file or url
+    if os.path.isfile(model_config[f'base_model_url']):
+        base_model = torch.jit.load(model_config[f'base_model_url'])
+    else:
+        base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_url'])
+
+    if os.path.isfile(model_config[f'render_model_url']):
+        render_model = torch.jit.load(model_config[f'render_model_url'])
+    else:
+        render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_url'])
+
     engine_cls = MultiScaleInferenceEngine
-    
+
     torch.cuda.set_device(config['gpu'])
-    
+
     eval_tfs = A.Compose([
         A.Normalize(**config['norms']),
         ToTensorV2()
     ])
-    
+
     # create the dataloader
     shape = volume.shape
     dataset = ArrayData(volume, config['engine_params']['inference_scale'], axis, eval_tfs)
@@ -240,43 +248,43 @@ def main_worker(gpu, config, axis_name, volume, data_store):
         dataset, batch_size=1, shuffle=False, pin_memory=True,
         drop_last=False, num_workers=0, sampler=sampler
     )
-    
+
     # if in main process, create zarr to store results
     # chunk in axis direction only
     if rank == 0:
         chunks = [None, None, None]
         chunks[axis] = 1
         chunks = tuple(chunks)
-        stack = data_store.create_dataset(f'panoptic_{axis_name}', shape=shape, 
-                                          dtype=np.uint64, chunks=chunks, 
+        stack = data_store.create_dataset(f'panoptic_{axis_name}', shape=shape,
+                                          dtype=np.uint64, chunks=chunks,
                                           overwrite=True)
-       
+
         thing_list = config['engine_params']['thing_list']
         label_divisor = config['engine_params']['label_divisor']
         matchers = [
             SequentialMatcher(thing_class, **config['matcher_params'])
             for thing_class in thing_list
         ]
-        
+
         queue = mp.Queue()
         matcher_proc = mp.Process(target=run_forward_matchers, args=(stack, axis, matchers, queue, config))
         matcher_proc.start()
-        
+
     # create the inference engine
     inference_engine = engine_cls(base_model, render_model, **config['engine_params'], device=f'cuda:{gpu}')
     inference_engine.base_model = DDP(inference_engine.base_model, device_ids=[config['gpu']])
     inference_engine.render_model = DDP(inference_engine.render_model, device_ids=[config['gpu']])
-    
+
     print('Created inference engine on', inference_engine.device)
-    
+
     scale_factor = config['engine_params']['inference_scale'] * 4
-    
+
     iterator = dataloader if rank != 0 else tqdm(dataloader, total=len(dataloader))
-    
+
     n = 0
     step = get_world_size()
     total_len = volume.shape[axis]
-    
+
     for batch in iterator:
         index = batch['index']
         image = batch['image']
@@ -287,7 +295,7 @@ def main_worker(gpu, config, axis_name, volume, data_store):
         instance_cells = inference_engine.get_instance_cells(
             output['ctr_hmp'], output['offsets']
         )
-        
+
         # correctly resize the sem and instance_cells
         coarse_sem_logits = output['sem_logits']
         sem_logits = coarse_sem_logits.clone()
@@ -295,25 +303,25 @@ def main_worker(gpu, config, axis_name, volume, data_store):
         sem, _, instance_cells = inference_engine.upsample_logits_and_cells(
             sem_logits, coarse_sem_logits, features, instance_cells, scale_factor
         )
-        
+
         # get median semantic seg
         sems = all_gather(sem)
         instance_cells = all_gather(instance_cells)
-        
+
         # drop last segs if unnecessary
         n += len(sems)
         stop = min(step, (total_len - n) + step)
-        
+
         # move both sem and instance_cells to cpu
         sems = [sem.cpu() for sem in sems[:stop]]
         instance_cells = [cells.cpu() for cells in instance_cells[:stop]]
-        
+
         if rank == 0:
             for sem, cells in zip(sems, instance_cells):
                 queue.put(
                     (sem[..., :h, :w], cells[..., :h, :w])
                 )
-            
+
     # pass None to queue to mark the end of inference
     if rank == 0:
         queue.put((None, None))
@@ -346,15 +354,15 @@ class MultiGPUOrthoplaneEngine:
         # check whether GPU is available
         if not torch.cuda.device_count() > 1:
             raise Exception(f'MultiGPU inference requires access to multiple GPUs!')
-            
+
         device = 'gpu'
-            
+
         # load the base and render models
         self.labels = model_config['labels']
         self.config = model_config
         self.config['base_model_url'] = model_config[f'base_model_{device}']
         self.config['render_model_url'] = model_config[f'render_model_{device}']
-        
+
         self.config['engine_params'] = {}
         self.config['engine_params']['thing_list'] = self.config['thing_list']
         self.config['engine_params']['inference_scale'] = inference_scale
@@ -368,12 +376,12 @@ class MultiGPUOrthoplaneEngine:
 
         self.config['axes'] = {'xy': 0, 'xz': 1, 'yz': 2}
         self.config['matcher_params'] = {}
-        
+
         self.config['matcher_params']['label_divisor'] = label_divisor
         self.config['matcher_params']['merge_iou_thr'] = merge_iou_thr
         self.config['matcher_params']['merge_ioa_thr'] = merge_ioa_thr
         self.config['matcher_params']['force_connected'] = force_connected
-        
+
         self.config['world_size'] = torch.cuda.device_count()
 
     def update_params(
@@ -409,27 +417,27 @@ class MultiGPUOrthoplaneEngine:
 
         # reset median queue for good measure
         #self.engine.reset()
-        
+
     def create_matchers(self):
         matchers = []
         for thing_class in self.config['engine_params']['thing_list']:
             matchers.append(
-                SequentialMatcher(thing_class, **self.config['matcher_params'])  
+                SequentialMatcher(thing_class, **self.config['matcher_params'])
             )
 
         return matchers
 
     def infer_on_axis(self, volume, axis_name):
         mp.spawn(main_worker, nprocs=self.config['world_size'], args=(self.config, axis_name, volume, self.data))
-        
+
         # grab the zarr stack that was filled in
         stack = self.data[f'panoptic_{axis_name}']
-        
+
         # run backward matching and tracking
         print('Propagating labels backward...')
         axis = self.config['axes'][axis_name]
         matchers = self.create_matchers()
-        
+
         trackers = [
             InstanceTracker(label, self.config['matcher_params']['label_divisor'], volume.shape, axis_name)
             for label in self.labels
@@ -438,11 +446,11 @@ class MultiGPUOrthoplaneEngine:
         for matcher in matchers:
             matcher.assign_new = False
             matcher.force_connected = False
-            
+
         zarr_queue = mp.Queue()
         zarr_proc = mp.Process(target=run_zarr_put, args=(zarr_queue, stack, axis))
         zarr_proc.start()
-        
+
         tracker_queue = mp.Queue()
         tracker_out, tracker_in = mp.Pipe()
         tracker_proc = mp.Process(target=run_tracker, args=(tracker_queue, trackers, tracker_in))
@@ -451,14 +459,14 @@ class MultiGPUOrthoplaneEngine:
         rev_indices = np.arange(0, stack.shape[axis])[::-1]
         for rev_idx in tqdm(rev_indices):
             rev_idx = rev_idx.item()
-            pan_seg = zarr_take3d(stack, rev_idx, axis)    
-            
+            pan_seg = zarr_take3d(stack, rev_idx, axis)
+
             for matcher in matchers:
                 if matcher.target_seg is None:
                     pan_seg = matcher.initialize_target(pan_seg)
                 else:
                     pan_seg = matcher(pan_seg)
-                    
+
             # don't overwrite last slice in the stack alone
             if rev_idx < (stack.shape[axis] - 1):
                 zarr_queue.put((rev_idx, pan_seg))
@@ -467,16 +475,16 @@ class MultiGPUOrthoplaneEngine:
             #for tracker in trackers:
             #    tracker.update(pan_seg, rev_idx)
             tracker_queue.put((rev_idx, pan_seg))
-                
+
         zarr_queue.put((None, None))
         zarr_proc.join()
-        
+
         tracker_queue.put((None, None))
         trackers = tracker_out.recv()[0]
         tracker_proc.join()
 
         return stack, trackers
-        
+
 def run_tracker(queue, trackers, tracker_in):
     while True:
         index, pan_seg = queue.get()
@@ -485,14 +493,14 @@ def run_tracker(queue, trackers, tracker_in):
         else:
             for tracker in trackers:
                 tracker.update(pan_seg, index)
-                
+
     # finish tracking
     for tracker in trackers:
         tracker.finish()
-        
+
     tracker_in.send([trackers])
     tracker_in.close()
-        
+
 def run_zarr_put(queue, stack, axis):
     while True:
         index, pan_seg = queue.get()
@@ -500,4 +508,3 @@ def run_zarr_put(queue, stack, axis):
             break
         else:
             zarr_put3d(stack, index, pan_seg, axis)
-        
