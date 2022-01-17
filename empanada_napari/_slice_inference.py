@@ -30,7 +30,6 @@ def test_widget():
     # get list of all available model configs
     model_configs = get_configs()
 
-
     @thread_worker
     def test_model(
         engine,
@@ -153,5 +152,5 @@ def test_widget():
     return widget
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def test_dock_widget():
+def slice_dock_widget():
     return test_widget, {'name': '2D Inference (Parameter Testing)'}

@@ -85,7 +85,7 @@ def stack_postprocessing(
         filters.remove_small_objects(stack_tracker, min_size=min_size)
         filters.remove_pancakes(stack_tracker, min_span=min_extent)
 
-        print('N objects', len(stack_tracker.instances.keys()))
+        print(f'Total {class_name} objects {len(stack_tracker.instances.keys())}')
 
         # decode and fill the instances
         if data is not None:
@@ -136,7 +136,7 @@ def tracker_consensus(
         filters.remove_small_objects(consensus_tracker, min_size=min_size)
         filters.remove_pancakes(consensus_tracker, min_span=min_extent)
 
-        print('N objects', len(consensus_tracker.instances.keys()))
+        print(f'Total {class_name} objects {len(consensus_tracker.instances.keys())}')
 
         # decode and fill the instances
         if data is not None:

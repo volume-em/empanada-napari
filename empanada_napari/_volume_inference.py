@@ -1,5 +1,4 @@
 import sys
-import yaml
 import os
 from typing import Any
 from napari_plugin_engine import napari_hook_implementation
@@ -15,19 +14,25 @@ from magicgui import magicgui
 
 from magicgui.tqdm import tqdm
 
-import zarr
-import dask.array as da
-
-def orthoplane_inference_widget():
+def volume_inference_widget():
     from napari.qt.threading import thread_worker
-    from napari.qt import progress
 
     # Import when users activate plugin
-    from empanada_napari.orthoplane import OrthoPlaneEngine, tracker_consensus
-    from empanada_napari.utils import get_configs, load_config
+    import zarr
+    import dask.array as da
+    from empanada_napari.orthoplane import OrthoPlaneEngine, tracker_consensus, stack_postprocessing
+    from empanada_napari.utils import get_configs
+    from empanada.config_loaders import load_config
+    from empanada.inference import filters
 
     # get list of all available model configs
     model_configs = get_configs()
+
+    @thread_worker
+    def stack_inference(engine, volume):
+        stack, trackers = engine.infer_on_axis(volume, 'xy')
+        trackers_dict = {'xy': trackers}
+        return stack, trackers_dict
 
     @thread_worker
     def orthoplane_inference(engine, volume):
@@ -35,13 +40,18 @@ def orthoplane_inference_widget():
         for axis_name in ['xy', 'xz', 'yz']:
             stack, trackers = engine.infer_on_axis(volume, axis_name)
             trackers_dict[axis_name] = trackers
-            print(f'{axis_name} instances: {len(trackers[0].instances.keys())}')
+
+            # report instances per class
+            for tracker in trackers:
+                class_id = tracker.class_id
+                print(f'Class {class_id}, axis {axis_name}, has {len(tracker.instances.keys())} instances')
+
             yield stack, axis_name
 
         return trackers_dict
 
     @magicgui(
-        call_button='Run Orthoplane Inference',
+        call_button='Run XY Stack Inference',
         layout='vertical',
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
         median_slices=dict(widget_type='ComboBox', choices=[1, 3, 5, 7, 9], value=3, label='Median filter size', tooltip='Median filter size'),
@@ -49,14 +59,17 @@ def orthoplane_inference_widget():
         min_distance_object_centers=dict(widget_type='Slider', value=3, min=3, max=21, label='Minimum distance between object centers.'),
         confidence_thr=dict(widget_type='FloatSlider', value=0.5, min=0.1, max=0.9, step=0.1, label='Confidence Threshold'),
         center_confidence_thr=dict(widget_type='FloatSlider', value=0.1, min=0.1, max=0.9, label='Center Confidence Threshold'),
-        merge_iou_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label='IoU Threshold'),
-        merge_ioa_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label='IoA Threshold'),
+        merge_iou_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IoU Threshold'),
+        merge_ioa_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IoA Threshold'),
         min_size=dict(widget_type='LineEdit', value=500, label='Minimum object size in voxels'),
         min_extent=dict(widget_type='LineEdit', value=4, label='Minimum extent of object bounding box'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
         store_dir=dict(widget_type='FileEdit', value='./', label='Store Directory', mode='d', tooltip='location to store segmentations on disk'),
         overwrite=dict(widget_type='CheckBox', text='Overwrite stored files?', value=False, tooltip='whether to overwrite zarr stores in store dir'),
-        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
+        fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
+        return_panoptic=dict(widget_type='CheckBox', text='Return panoptic', value=False, tooltip='whether to return the panoptic segmentations'),
+        orthoplane=dict(widget_type='CheckBox', text='Run orthoplane', value=False, tooltip='whether to run orthoplane inference'),
+        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.')
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -74,6 +87,9 @@ def orthoplane_inference_widget():
         maximum_objects_per_class,
         store_dir,
         overwrite,
+        fine_boundaries,
+        return_panoptic,
+        orthoplane,
         use_gpu
     ):
         # load the model config
@@ -104,7 +120,7 @@ def orthoplane_inference_widget():
         # conditions where model needs to be (re)loaded
         if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
             widget.engine = OrthoPlaneEngine(
-                store_url, model_config,
+                model_config,
                 inference_scale=downsampling,
                 median_kernel_size=median_slices,
                 nms_kernel=min_distance_object_centers,
@@ -112,15 +128,19 @@ def orthoplane_inference_widget():
                 confidence_thr=confidence_thr,
                 merge_iou_thr=merge_iou_thr,
                 merge_ioa_thr=merge_ioa_thr,
+                min_size=min_size,
+                min_extent=min_extent,
+                fine_boundaries=fine_boundaries,
                 label_divisor=maximum_objects_per_class,
-                use_gpu=use_gpu
+                use_gpu=use_gpu,
+                save_panoptic=return_panoptic,
+                store_url=store_url
             )
             widget.last_config = model_config
             widget.using_gpu = use_gpu
         else:
             # update the parameters
             widget.engine.update_params(
-                store_url=store_url,
                 inference_scale=downsampling,
                 median_kernel_size=median_slices,
                 nms_kernel=min_distance_object_centers,
@@ -128,36 +148,41 @@ def orthoplane_inference_widget():
                 confidence_thr=confidence_thr,
                 merge_iou_thr=merge_iou_thr,
                 merge_ioa_thr=merge_ioa_thr,
-                label_divisor=maximum_objects_per_class
+                min_size=min_size,
+                min_extent=min_extent,
+                fine_boundaries=fine_boundaries,
+                label_divisor=maximum_objects_per_class,
+                save_panoptic=return_panoptic,
+                store_url=store_url
             )
 
-        def _new_layers(masks, description):
-            widget.masks_orig = masks
+        def _new_layers(mask, description):
             layers = []
 
-            if type(masks) == zarr.core.Array:
-                masks = da.from_zarr(masks)
+            if type(mask) == zarr.core.Array:
+                mask = da.from_zarr(mask)
 
-            viewer.add_labels(masks, name=f'{image_layer.name}-{description}', visible=True)
+            viewer.add_labels(mask, name=f'{image_layer.name}-{description}', visible=True)
 
         def _new_segmentation(*args):
-            masks, axis_name = args[0]
-            try:
-                _new_layers(masks, f'panoptic-{axis_name}')
+            mask = args[0][0]
+            if mask is not None:
+                try:
+                    _new_layers(mask, f'panoptic-xy-stack')
 
-                for layer in viewer.layers:
-                    layer.visible = False
+                    for layer in viewer.layers:
+                        layer.visible = False
 
-                viewer.layers[-1].visible = True
-                image_layer.visible = True
+                    viewer.layers[-1].visible = True
+                    image_layer.visible = True
 
-            except Exception as e:
-                print(e)
+                except Exception as e:
+                    print(e)
 
-        def _new_consensus(*args):
+        def _new_class_stack(*args):
             masks, class_name = args[0]
             try:
-                _new_layers(masks, f'{class_name}-consensus')
+                _new_layers(masks, f'{class_name}-prediction')
 
                 for layer in viewer.layers:
                     layer.visible = False
@@ -166,13 +191,22 @@ def orthoplane_inference_widget():
                 image_layer.visible = True
             except Exception as e:
                 print(e)
+
+        def start_postprocess_worker(*args):
+            trackers_dict = args[0][1]
+            postprocess_worker = stack_postprocessing(
+                trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
+                min_size=min_size, min_extent=min_extent
+            )
+            postprocess_worker.yielded.connect(_new_class_stack)
+            postprocess_worker.start()
 
         def start_consensus_worker(trackers_dict):
             consensus_worker = tracker_consensus(
                 trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
                 min_size=min_size, min_extent=min_extent
             )
-            consensus_worker.yielded.connect(_new_consensus)
+            consensus_worker.yielded.connect(_new_class_stack)
             consensus_worker.start()
 
         image = image_layer.data
@@ -180,13 +214,19 @@ def orthoplane_inference_widget():
             print(f'Multiscale image selected, using highest resolution level!')
             image = image[0]
 
-        worker = orthoplane_inference(widget.engine, image)
-        worker.yielded.connect(_new_segmentation)
-        worker.returned.connect(start_consensus_worker)
+        if orthoplane:
+            worker = orthoplane_inference(widget.engine, image)
+            worker.yielded.connect(_new_segmentation)
+            worker.returned.connect(start_consensus_worker)
+        else:
+            worker = stack_inference(widget.engine, image)
+            worker.returned.connect(_new_segmentation)
+            worker.returned.connect(start_postprocess_worker)
+
         worker.start()
 
     return widget
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def orthoplane_inference_dock_widget():
-    return orthoplane_inference_widget, {'name': 'Orthoplane Inference'}
+def volume_dock_widget():
+    return volume_inference_widget, {'name': '3D Inference'}
