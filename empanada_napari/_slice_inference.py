@@ -23,7 +23,7 @@ def test_widget():
     from napari.qt.threading import thread_worker
 
     # Import when users activate plugin
-    from empanada_napari.orthoplane import TestEngine
+    from empanada_napari.inference import TestEngine
     from empanada_napari.utils import get_configs
     from empanada.config_loaders import load_config
 
