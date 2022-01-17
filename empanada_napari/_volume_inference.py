@@ -64,12 +64,11 @@ def volume_inference_widget():
         min_size=dict(widget_type='LineEdit', value=500, label='Minimum object size in voxels'),
         min_extent=dict(widget_type='LineEdit', value=4, label='Minimum extent of object bounding box'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
-        store_dir=dict(widget_type='FileEdit', value='./', label='Store Directory', mode='d', tooltip='location to store segmentations on disk'),
-        overwrite=dict(widget_type='CheckBox', text='Overwrite stored files?', value=False, tooltip='whether to overwrite zarr stores in store dir'),
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         return_panoptic=dict(widget_type='CheckBox', text='Return panoptic', value=False, tooltip='whether to return the panoptic segmentations'),
         orthoplane=dict(widget_type='CheckBox', text='Run orthoplane', value=False, tooltip='whether to run orthoplane inference'),
-        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.')
+        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
+        store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Zarr Store Directory (optional)', mode='d', tooltip='location to store segmentations on disk'),
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -85,12 +84,11 @@ def volume_inference_widget():
         min_size,
         min_extent,
         maximum_objects_per_class,
-        store_dir,
-        overwrite,
         fine_boundaries,
         return_panoptic,
         orthoplane,
-        use_gpu
+        use_gpu,
+        store_dir
     ):
         # load the model config
         model_config_name = model_config
@@ -101,15 +99,11 @@ def volume_inference_widget():
 
         # create the storage url from layer name and model config
         store_dir = str(store_dir)
-        #if store_dir:
-        store_url = os.path.join(store_dir, f'{image_layer.name}_{model_config_name}_napari.zarr')
-        if os.path.isdir(store_url) and not overwrite:
-            raise Exception(f"{store_url} exists, if you want to overwrite it check 'Overwrite stored files?' ")
-        elif os.path.isdir(store_url):
-            print(f'Overwriting segmentations stored in {store_url}')
-        #else:
-        #    store_url = None
-        #    print(f'Running without store_dir, this may use a lot of RAM!')
+        if store_dir == 'no zarr storage':
+            store_url = None
+            print(f'Running without zarr storage directory, this may use a lot of memory!')
+        else:
+            store_url = os.path.join(store_dir, f'{image_layer.name}_{model_config_name}_napari.zarr')
 
         if not hasattr(widget, 'last_config'):
             widget.last_config = model_config
@@ -196,7 +190,7 @@ def volume_inference_widget():
             trackers_dict = args[0][1]
             postprocess_worker = stack_postprocessing(
                 trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
-                min_size=min_size, min_extent=min_extent
+                min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
             )
             postprocess_worker.yielded.connect(_new_class_stack)
             postprocess_worker.start()
@@ -204,7 +198,7 @@ def volume_inference_widget():
         def start_consensus_worker(trackers_dict):
             consensus_worker = tracker_consensus(
                 trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
-                min_size=min_size, min_extent=min_extent
+                min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
             )
             consensus_worker.yielded.connect(_new_class_stack)
             consensus_worker.start()

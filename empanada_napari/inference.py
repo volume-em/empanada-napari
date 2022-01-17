@@ -47,6 +47,19 @@ def instance_relabel(tracker):
 
     return instances
 
+def numpy_fill_instances(volume, instances):
+    shape = volume.shape
+    volume = volume.reshape(-1)
+    for instance_id, instance_attrs in instances.items():
+        starts = instance_attrs['starts']
+        ends = starts + instance_attrs['runs']
+
+        # fill ranges with instance id
+        for s,e in zip(starts, ends):
+            volume[s:e] = instance_id
+
+    return volume.reshape(shape)
+
 @thread_worker
 def stack_postprocessing(
     trackers,
@@ -54,14 +67,15 @@ def stack_postprocessing(
     model_config,
     label_divisor=1000,
     min_size=200,
-    min_extent=4
+    min_extent=4,
+    dtype=np.uint64
 ):
     labels = model_config['labels']
     class_names = model_config['class_names']
     if store_url is not None:
-        data = zarr.open(store_url)
+        zarr_store = zarr.open(store_url)
     else:
-        data = None
+        zarr_store = None
 
     # create the final instance segmentations
     for class_id, class_name in zip(labels, class_names):
@@ -88,15 +102,16 @@ def stack_postprocessing(
         print(f'Total {class_name} objects {len(stack_tracker.instances.keys())}')
 
         # decode and fill the instances
-        if data is not None:
-            stack_vol = data.create_dataset(
-                f'{class_name}_pred', shape=shape3d, dtype=np.uint64,
+        if zarr_store is not None:
+            stack_vol = zarr_store.create_dataset(
+                f'{class_name}_pred', shape=shape3d, dtype=dtype,
                 overwrite=True, chunks=(1, None, None)
             )
+            zarr_fill_instances(stack_vol, stack_tracker.instances)
         else:
-            stack_vol = np.zeros(shape3d, dtype=np.uint64)
+            stack_vol = np.zeros(shape3d, dtype=dtype)
+            stack_vol = numpy_fill_instances(stack_vol, stack_tracker.instances)
 
-        zarr_fill_instances(stack_vol, stack_tracker.instances)
         yield stack_vol, class_name
 
 @thread_worker
@@ -106,14 +121,15 @@ def tracker_consensus(
     model_config,
     label_divisor=1000,
     min_size=200,
-    min_extent=4
+    min_extent=4,
+    dtype=np.uint64
 ):
     labels = model_config['labels']
     class_names = model_config['class_names']
     if store_url is not None:
-        data = zarr.open(store_url)
+        zarr_store = zarr.open(store_url)
     else:
-        data = None
+        zarr_store = None
 
     # create the final instance segmentations
     for class_id, class_name in zip(labels, class_names):
@@ -139,15 +155,16 @@ def tracker_consensus(
         print(f'Total {class_name} objects {len(consensus_tracker.instances.keys())}')
 
         # decode and fill the instances
-        if data is not None:
-            consensus_vol = data.create_dataset(
-                f'{class_name}_pred', shape=shape3d, dtype=np.uint64,
+        if zarr_store is not None:
+            consensus_vol = zarr_store.create_dataset(
+                f'{class_name}_pred', shape=shape3d, dtype=dtype,
                 overwrite=True, chunks=(1, None, None)
             )
+            zarr_fill_instances(consensus_vol, consensus_tracker.instances)
         else:
-            consensus_vol = np.zeros(shape3d, dtype=np.uint64)
+            consensus_vol = np.zeros(shape3d, dtype=dtype)
+            consensus_vol = numpy_fill_instances(consensus_vol, consensus_tracker.instances)
 
-        zarr_fill_instances(consensus_vol, consensus_tracker.instances)
         yield consensus_vol, class_name
 
 class TestEngine:
@@ -376,6 +393,20 @@ class OrthoPlaneEngine:
         else:
             self.zarr_store = None
 
+        self.set_dtype()
+
+    def set_dtype(self):
+        # maximum possible value in panoptic seg
+        max_index = self.label_divisor * (1 + max(self.labels))
+        if max_index < 2 ** 8:
+            self.dtype = np.uint8
+        elif max_index < 2 ** 16:
+            self.dtype = np.uint16
+        elif max_index < 2 ** 32:
+            self.dtype = np.uint32
+        else:
+            self.dtype = np.uint64
+
     def update_params(
         self,
         inference_scale,
@@ -417,6 +448,8 @@ class OrthoPlaneEngine:
         else:
             self.zarr_store = None
 
+        self.set_dtype()
+
     def create_matchers(self):
         matchers = [
             RLEMatcher(thing_class, self.label_divisor, self.merge_iou_thr, self.merge_ioa_thr)
@@ -439,12 +472,12 @@ class OrthoPlaneEngine:
             chunks[self.axes[axis_name]] = 1
             stack = self.zarr_store.create_dataset(
                 f'panoptic_{axis_name}', shape=shape3d,
-                dtype=np.uint64, chunks=tuple(chunks), overwrite=True
+                dtype=self.dtype, chunks=tuple(chunks), overwrite=True
             )
 
         elif self.save_panoptic:
             # we'll use uint32 for in memory segs
-            stack = np.zeros(shape3d, dtype=np.uint64)
+            stack = np.zeros(shape3d, dtype=self.dtype)
         else:
             stack = None
 
