@@ -1,6 +1,3 @@
-"""
-cellpose dock widget module
-"""
 import sys
 import yaml
 import os
@@ -118,7 +115,7 @@ def multigpu_inference_widget():
             )
             widget.last_config = model_config
             widget.using_gpu = use_gpu
-            
+
         def _new_layers(mask, description):
             layers = []
 

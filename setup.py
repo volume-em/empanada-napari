@@ -9,7 +9,7 @@ install_deps = [
     'napari-plugin-engine>=0.1.4',
     'imagecodecs',
     'albumentations',
-    'mitonet'
+    'empanada'
 ]
 
 setup(
@@ -23,7 +23,7 @@ setup(
     python_requires='>=3.7',
     use_scm_version=True,
     install_requires=install_deps,
-    dependency_links = ['https://github.com/volume-em/MitoNet#egg=mitonet'],
+    dependency_links = ['https://github.com/volume-em/MitoNet#egg=empanada'],
     setup_requires=['setuptools_scm', 'pytest-runner'],
     tests_require=['pytest', 'pytest-qt'],
     include_package_data=True,

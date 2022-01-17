@@ -1,6 +1,7 @@
 import os
 import zarr
 import yaml
+import numpy as np
 import torch
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -257,26 +258,44 @@ class TestEngine:
         pan_seg = self.engine(image, upsampling=self.inference_scale)
         return pan_seg.squeeze().cpu().numpy()
 
-def run_forward_matchers(stack, axis, matchers, queue):
+def run_forward_matchers(
+    matchers,
+    queue,
+    rle_stack,
+    matcher_in,
+    end_signal='finish'
+):
+    """
+    Run forward matching of instances between slices in a separate process
+    on CPU while model is performing inference on GPU.
+    """
+    # go until queue gets the kill signal
     while True:
-        fill_index, pan_seg = queue.get()
-        if pan_seg is None:
+        rle_seg = queue.get()
+
+        if rle_seg is None:
+            # building the median filter queue
             continue
-        elif isinstance(pan_seg, str):
+        elif rle_seg == end_signal:
+            # all images have been matched!
             break
         else:
+            # match the rle seg for each class
             for matcher in matchers:
-                if matcher.target_seg is None:
-                    pan_seg = matcher.initialize_target(pan_seg)
+                class_id = matcher.class_id
+                if matcher.target_rle is None:
+                    matcher.initialize_target(rle_seg[class_id])
                 else:
-                    pan_seg = matcher(pan_seg)
+                    rle_seg[class_id] = matcher(rle_seg[class_id])
 
-            zarr_put3d(stack, fill_index, pan_seg, axis)
+            rle_stack.append(rle_seg)
+
+    matcher_in.send([rle_stack])
+    matcher_in.close()
 
 class OrthoPlaneEngine:
     def __init__(
         self,
-        store_url,
         model_config,
         inference_scale=1,
         label_divisor=1000,
@@ -289,14 +308,14 @@ class OrthoPlaneEngine:
         merge_iou_thr=0.25,
         merge_ioa_thr=0.25,
         force_connected=True,
+        min_size=500,
+        min_extent=4,
+        fine_boundaries=False,
+        semantic_only=False,
         use_gpu=True,
-        filters=None
+        store_url=None,
+        save_panoptic=False
     ):
-        if store_url is not None:
-            self.data = zarr.open(store_url, mode='w')
-        else:
-            self.data = None
-
         # check whether GPU is available
         if torch.cuda.is_available() and use_gpu:
             device = 'gpu'
@@ -323,10 +342,16 @@ class OrthoPlaneEngine:
 
         # create the inference engine
         self.engine = MultiScaleInferenceEngine(
-            base_model, render_model, self.thing_list, [1],
-            inference_scale, median_kernel_size, label_divisor,
-            stuff_area, void_label, nms_threshold, nms_kernel,
-            confidence_thr, device=device
+            base_model, render_model,
+            thing_list=self.thing_list,
+            median_kernel_size=median_kernel_size,
+            label_divisor=label_divisor,
+            nms_threshold=nms_threshold,
+            nms_kernel=nms_kernel,
+            confidence_thr=confidence_thr,
+            padding_factor=self.padding_factor,
+            coarse_boundaries=not fine_boundaries,
+            device=device
         )
 
         # set the image transforms
@@ -341,10 +366,18 @@ class OrthoPlaneEngine:
         self.merge_iou_thr = merge_iou_thr
         self.merge_ioa_thr = merge_ioa_thr
         self.force_connected = force_connected
+        self.min_size = min_size
+        self.min_extent = min_extent
+        self.fine_boundaries = fine_boundaries
+
+        self.save_panoptic = save_panoptic
+        if store_url is not None:
+            self.zarr_store = zarr.open(store_url, mode='w')
+        else:
+            self.zarr_store = None
 
     def update_params(
         self,
-        store_url,
         inference_scale,
         label_divisor,
         median_kernel_size,
@@ -352,148 +385,161 @@ class OrthoPlaneEngine:
         nms_kernel,
         confidence_thr,
         merge_iou_thr,
-        merge_ioa_thr
+        merge_ioa_thr,
+        min_size,
+        min_extent,
+        fine_boundaries,
+        store_url,
+        save_panoptic
     ):
-
-        if store_url is not None:
-            self.data = zarr.open(store_url, mode='w')
-        else:
-            self.data = None
-
         self.label_divisor = label_divisor
         self.merge_iou_thr = merge_iou_thr
         self.merge_ioa_thr = merge_ioa_thr
         self.inference_scale = inference_scale
+        self.min_size = min_size
+        self.min_extent = min_extent
+        self.fine_boundaries = fine_boundaries
 
-        self.engine.input_scale = inference_scale
         self.engine.label_divisor = label_divisor
         self.engine.ks = median_kernel_size
         self.engine.mid_idx = (median_kernel_size - 1) // 2
         self.engine.nms_threshold = nms_threshold
         self.engine.nms_kernel = nms_kernel
         self.engine.confidence_thr = confidence_thr
+        self.engine.coarse_boundaries = not fine_boundaries
 
         # reset median queue for good measure
         self.engine.reset()
 
-    def create_matchers(self):
-        matchers = []
-        for thing_class in self.thing_list:
-            matchers.append(
-                SequentialMatcher(
-                    thing_class, self.label_divisor, self.merge_iou_thr,
-                    self.merge_ioa_thr, force_connected=self.force_connected
-                )
-            )
+        self.save_panoptic = save_panoptic
+        if store_url is not None:
+            self.zarr_store = zarr.open(store_url, mode='w')
+        else:
+            self.zarr_store = None
 
+    def create_matchers(self):
+        matchers = [
+            RLEMatcher(thing_class, self.label_divisor, self.merge_iou_thr, self.merge_ioa_thr)
+            for thing_class in self.thing_list
+        ]
         return matchers
+
+    def create_trackers(self, shape3d, axis_name):
+        trackers = [
+            InstanceTracker(label, self.label_divisor, shape3d, axis_name)
+            for label in self.labels
+        ]
+        return trackers
 
     def create_panoptic_stack(self, axis_name, shape3d):
         # faster IO with chunking only along
         # the given axis, orthogonal viewing is slow though
-        if self.data is not None:
+        if self.zarr_store is not None and self.save_panoptic:
             chunks = [None, None, None]
             chunks[self.axes[axis_name]] = 1
-            chunks = tuple(chunks)
-            stack = self.data.create_dataset(
+            stack = self.zarr_store.create_dataset(
                 f'panoptic_{axis_name}', shape=shape3d,
-                dtype=np.uint64, chunks=chunks, overwrite=True
+                dtype=np.uint64, chunks=tuple(chunks), overwrite=True
             )
 
-        else:
+        elif self.save_panoptic:
             # we'll use uint32 for in memory segs
             stack = np.zeros(shape3d, dtype=np.uint64)
+        else:
+            stack = None
 
         return stack
 
     def infer_on_axis(self, volume, axis_name):
         axis = self.axes[axis_name]
         # create the dataloader
-        dataset = ArrayData(volume, self.inference_scale, axis, self.tfs)
+        dataset = VolumeDataset(volume, axis, self.tfs, scale=self.inference_scale)
         dataloader = DataLoader(
             dataset, batch_size=1, shuffle=False, pin_memory=False,
             drop_last=False, num_workers=0
         )
 
-        # create the trackers
         # create a separate tracker for
         # each prediction axis and each segmentation class
-        trackers = [
-            InstanceTracker(label, self.label_divisor, volume.shape, axis_name)
-            for label in self.labels
-        ]
-
+        trackers = self.create_trackers(volume.shape, axis_name)
         matchers = self.create_matchers()
 
         # output stack
         stack = self.create_panoptic_stack(axis_name, volume.shape)
 
+        # setup matcher for multiprocessing
         queue = mp.Queue()
-        matcher_proc = mp.Process(target=run_forward_matchers, args=(stack, axis, matchers, queue))
+        rle_stack = []
+        matcher_out, matcher_in = mp.Pipe()
+        matcher_proc = mp.Process(target=run_forward_matchers, args=(matchers, queue, rle_stack, matcher_in))
         matcher_proc.start()
 
         print(f'Predicting {axis_name}...')
-
-        fill_index = 0
-        imshape = list(volume.shape)
-        del imshape[axis]
-        h, w = imshape
-
-        fill_index = 0
         for batch in tqdm(dataloader, total=len(dataloader)):
             image = batch['image']
-            image = factor_pad(image, self.padding_factor)
+            pan_seg = self.engine(image, self.inference_scale)
 
-            pan_seg = self.engine(image)
             if pan_seg is None:
-                # building the queue
-                queue.put((fill_index, pan_seg))
+                # building the median queue
+                queue.put(None)
                 continue
             else:
-                # only support single scale (i.e. scale 1)
-                pan_seg = pan_seg[0]
-                pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions
-                queue.put((fill_index, pan_seg.cpu().numpy()))
-                fill_index += 1
+                pan_seg = pan_seg.squeeze().cpu().numpy() # remove padding and unit dimensions
 
-        final_segs = self.engine.end()
+                # convert to a compressed rle segmentation
+                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.force_connected)
+                queue.put(rle_seg)
+
+        final_segs = self.engine.empty_queue()
         if final_segs:
             for i, pan_seg in enumerate(final_segs):
-                pan_seg = pan_seg[0]
-                pan_seg = pan_seg.squeeze()[:h, :w] # remove padding
-                queue.put((fill_index, pan_seg.cpu().numpy()))
-                fill_index += 1
+                pan_seg = pan_seg.squeeze().cpu().numpy() # remove padding
+
+                # convert to a compressed rle segmentation
+                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.force_connected)
+                queue.put(rle_seg)
+
+        # finish and close forward matching process
+        queue.put('finish')
+        rle_stack = matcher_out.recv()[0]
+        matcher_proc.join()
 
         print(f'Propagating labels backward...')
-
         # set the matchers to not assign new labels
-        # and not split disconnected components
         for matcher in matchers:
+            matcher.target_rle = None
             matcher.assign_new = False
-            matcher.force_connected = False
 
-        rev_indices = np.arange(0, stack.shape[axis])[::-1]
+        rev_indices = np.arange(0, volume.shape[axis])[::-1]
         for rev_idx in tqdm(rev_indices):
             rev_idx = rev_idx.item()
-            pan_seg = zarr_take3d(stack, rev_idx, axis)
+            rle_seg = rle_stack[rev_idx]
 
             for matcher in matchers:
-                if matcher.target_seg is None:
-                    pan_seg = matcher.initialize_target(pan_seg)
+                class_id = matcher.class_id
+                if matcher.target_rle is None:
+                    matcher.initialize_target(rle_seg[class_id])
                 else:
-                    pan_seg = matcher(pan_seg)
+                    rle_seg[class_id] = matcher(rle_seg[class_id])
 
-            # leave the last slice in the stack alone
-            if rev_idx < (stack.shape[axis] - 1):
-                stack = zarr_put3d(stack, rev_idx, pan_seg, axis)
+            # store the panoptic seg if desired
+            if self.save_panoptic:
+                shape2d = tuple([s for i,s in enumerate(volume.shape) if i != axis])
+                pan_seg = rle_seg_to_pan_seg(rle_seg, shape2d)
+                put(stack, rev_idx, pan_seg, axis)
 
             # track each instance for each class
             for tracker in trackers:
-                tracker.update(pan_seg, rev_idx)
+                class_id = tracker.class_id
+                tracker.update(rle_seg[class_id], rev_idx)
 
         # finish tracking
         for tracker in trackers:
             tracker.finish()
+
+            # apply filters
+            filters.remove_small_objects(tracker, min_size=self.min_size)
+            filters.remove_pancakes(tracker, min_span=self.min_extent)
 
         self.engine.reset()
 

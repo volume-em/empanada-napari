@@ -1,6 +1,3 @@
-"""
-cellpose dock widget module
-"""
 import sys
 import yaml
 import os

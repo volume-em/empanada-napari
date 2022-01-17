@@ -7,14 +7,14 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader
 
-from mitonet.inference import filters
-from mitonet.inference.postprocess import factor_pad
-from mitonet.inference.engines import MultiScaleInferenceEngine
-from mitonet.inference.tracker import InstanceTracker
-from mitonet.inference.matcher import SequentialMatcher
-from mitonet.inference.array_utils import *
-from mitonet.zarr_utils import *
-from mitonet.aggregation.consensus import merge_objects3d
+from empanada.inference import filters
+from empanada.inference.postprocess import factor_pad
+from empanada.inference.engines import MultiScaleInferenceEngine
+from empanada.inference.tracker import InstanceTracker
+from empanada.inference.matcher import SequentialMatcher
+from empanada.inference.array_utils import *
+from empanada.zarr_utils import *
+from empanada.aggregation.consensus import merge_objects3d
 
 from empanada_napari.utils import ArrayData, resize, adjust_shape_by_scale
 
@@ -35,7 +35,7 @@ from collections import deque
 
 from time import time
 
-from mitonet.inference.postprocess import merge_semantic_and_instance
+from empanada.inference.postprocess import merge_semantic_and_instance
 
 @functools.lru_cache()
 def _get_global_gloo_group():

@@ -1,6 +1,3 @@
-"""
-cellpose dock widget module
-"""
 import sys
 import os
 from typing import Any
@@ -17,16 +14,16 @@ from magicgui import magicgui
 
 from magicgui.tqdm import tqdm
 
-import zarr
-import dask.array as da
-
 def stack_inference_widget():
     from napari.qt.threading import thread_worker
 
     # Import when users activate plugin
+    import zarr
+    import dask.array as da
     from empanada_napari.orthoplane import OrthoPlaneEngine, tracker_consensus, stack_postprocessing
-    from empanada_napari.utils import get_configs, load_config
-    from mitonet.inference import filters
+    from empanada_napari.utils import get_configs
+    from empanada.config_loaders import load_config
+    from empanada.inference import filters
 
     # get list of all available model configs
     model_configs = get_configs()
@@ -53,6 +50,8 @@ def stack_inference_widget():
         maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
         store_dir=dict(widget_type='FileEdit', value='./', label='Store Directory', mode='d', tooltip='location to store segmentations on disk'),
         overwrite=dict(widget_type='CheckBox', text='Overwrite stored files?', value=False, tooltip='whether to overwrite zarr stores in store dir'),
+        fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
+        return_panoptic=dict(widget_type='CheckBox', text='Return panoptic', value=False, tooltip='whether to return the panoptic segmentations'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.')
     )
     def widget(
@@ -71,6 +70,8 @@ def stack_inference_widget():
         maximum_objects_per_class,
         store_dir,
         overwrite,
+        fine_boundaries,
+        return_panoptic,
         use_gpu
     ):
         # load the model config
@@ -101,7 +102,7 @@ def stack_inference_widget():
         # conditions where model needs to be (re)loaded
         if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
             widget.engine = OrthoPlaneEngine(
-                store_url, model_config,
+                model_config,
                 inference_scale=downsampling,
                 median_kernel_size=median_slices,
                 nms_kernel=min_distance_object_centers,
@@ -109,15 +110,19 @@ def stack_inference_widget():
                 confidence_thr=confidence_thr,
                 merge_iou_thr=merge_iou_thr,
                 merge_ioa_thr=merge_ioa_thr,
+                min_size=min_size,
+                min_extent=min_extent,
+                fine_boundaries=fine_boundaries,
                 label_divisor=maximum_objects_per_class,
-                use_gpu=use_gpu
+                use_gpu=use_gpu,
+                save_panoptic=return_panoptic,
+                store_url=store_url
             )
             widget.last_config = model_config
             widget.using_gpu = use_gpu
         else:
             # update the parameters
             widget.engine.update_params(
-                store_url=store_url,
                 inference_scale=downsampling,
                 median_kernel_size=median_slices,
                 nms_kernel=min_distance_object_centers,
@@ -125,7 +130,12 @@ def stack_inference_widget():
                 confidence_thr=confidence_thr,
                 merge_iou_thr=merge_iou_thr,
                 merge_ioa_thr=merge_ioa_thr,
-                label_divisor=maximum_objects_per_class
+                min_size=min_size,
+                min_extent=min_extent,
+                fine_boundaries=fine_boundaries,
+                label_divisor=maximum_objects_per_class,
+                save_panoptic=return_panoptic,
+                store_url=store_url
             )
 
         def _new_layers(mask, description):
@@ -138,17 +148,18 @@ def stack_inference_widget():
 
         def _new_segmentation(*args):
             mask = args[0][0]
-            try:
-                _new_layers(mask, f'panoptic-xy-stack')
+            if mask is not None:
+                try:
+                    _new_layers(mask, f'panoptic-xy-stack')
 
-                for layer in viewer.layers:
-                    layer.visible = False
+                    for layer in viewer.layers:
+                        layer.visible = False
 
-                viewer.layers[-1].visible = True
-                image_layer.visible = True
+                    viewer.layers[-1].visible = True
+                    image_layer.visible = True
 
-            except Exception as e:
-                print(e)
+                except Exception as e:
+                    print(e)
 
         def _new_class_stack(*args):
             masks, class_name = args[0]
