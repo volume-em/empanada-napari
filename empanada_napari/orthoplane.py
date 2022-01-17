@@ -2,27 +2,26 @@ import os
 import zarr
 import yaml
 import torch
-import torch.hub
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-from torch.utils.data import DataLoader
-
-from mitonet.inference import filters
-from mitonet.inference.postprocess import factor_pad
-from mitonet.inference.engines import MultiScaleInferenceEngine
-from mitonet.inference.tracker import InstanceTracker
-from mitonet.inference.matcher import SequentialMatcher
-from mitonet.inference.array_utils import *
-from mitonet.zarr_utils import *
-from mitonet.aggregation.consensus import merge_objects3d
-
-from empanada_napari.utils import ArrayData, resize, adjust_shape_by_scale
-
-from tqdm import tqdm
-
-from napari.qt.threading import thread_worker
 
 import torch.multiprocessing as mp
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from empanada.data import VolumeDataset
+from empanada.data.utils import resize_by_factor
+
+from empanada.inference import filters
+from empanada.inference.engines import MultiScaleInferenceEngine
+from empanada.inference.tracker import InstanceTracker
+from empanada.inference.matcher import RLEMatcher
+from empanada.array_utils import put
+from empanada.inference.rle import pan_seg_to_rle_seg, rle_seg_to_pan_seg
+from empanada.zarr_utils import *
+from empanada.consensus import merge_objects3d
+
+from napari.qt.threading import thread_worker
 
 def instance_relabel(tracker):
     instance_id = 1
@@ -156,12 +155,11 @@ class TestEngine:
         model_config,
         inference_scale=1,
         label_divisor=1000,
-        stuff_area=64,
-        void_label=0,
         nms_threshold=0.1,
         nms_kernel=3,
         confidence_thr=0.3,
         semantic_only=False,
+        fine_boundaries=False,
         use_gpu=True
     ):
         # check whether GPU is available
@@ -187,6 +185,7 @@ class TestEngine:
         self.label_divisor = label_divisor
         self.padding_factor = model_config['padding_factor']
         self.inference_scale = inference_scale
+        self.fine_boundaries = fine_boundaries
 
         if semantic_only:
             thing_list = []
@@ -195,10 +194,16 @@ class TestEngine:
 
         # create the inference engine
         self.engine = MultiScaleInferenceEngine(
-            base_model, render_model, thing_list, [1],
-            inference_scale, 1, label_divisor,
-            stuff_area, void_label, nms_threshold, nms_kernel,
-            confidence_thr, device=device
+            base_model, render_model,
+            thing_list=thing_list,
+            median_kernel_size=1,
+            label_divisor=label_divisor,
+            nms_threshold=nms_threshold,
+            nms_kernel=nms_kernel,
+            confidence_thr=confidence_thr,
+            padding_factor=self.padding_factor,
+            coarse_boundaries=not fine_boundaries,
+            device=device
         )
 
         # set the image transforms
@@ -216,6 +221,7 @@ class TestEngine:
         nms_threshold,
         nms_kernel,
         confidence_thr,
+        fine_boundaries,
         semantic_only=False
     ):
         # note that input_scale is the variable name in the engine
@@ -234,26 +240,22 @@ class TestEngine:
         self.confidence_thr = confidence_thr
         self.engine.confidence_thr = confidence_thr
 
+        self.fine_boundaries = fine_boundaries
+        self.engine.coarse_boundaries = not fine_boundaries
+
         if semantic_only:
             self.engine.thing_list = []
         else:
             self.engine.thing_list = self.thing_list
 
     def infer(self, image):
-        h, w = image.shape
         # resize image to correct scale
-        image = resize(image, self.inference_scale)
+        image = resize_by_factor(image, self.inference_scale)
         image = self.tfs(image=image)['image'].unsqueeze(0)
-        image = factor_pad(image, self.padding_factor)
 
-        pan_seg = self.engine(image)
-
-        # only support single scale (i.e. scale 1)
-        pan_seg = pan_seg[0]
-        pan_seg = pan_seg.squeeze()[:h, :w] # remove padding and unit dimensions
-        pan_seg = pan_seg.cpu().numpy() # move to cpu if not already
-
-        return pan_seg
+        # engine handles upsampling and padding
+        pan_seg = self.engine(image, upsampling=self.inference_scale)
+        return pan_seg.squeeze().cpu().numpy()
 
 def run_forward_matchers(stack, axis, matchers, queue):
     while True:
@@ -301,9 +303,17 @@ class OrthoPlaneEngine:
         else:
             device = 'cpu'
 
-        # load the base and render models
-        base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
-        render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
+        # load the base and render models from file or url
+        if os.path.isfile(model_config[f'base_model_{device}']):
+            base_model = torch.jit.load(model_config[f'base_model_{device}'])
+        else:
+            base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
+
+        if os.path.isfile(model_config[f'render_model_{device}']):
+            render_model = torch.jit.load(model_config[f'render_model_{device}'])
+        else:
+            render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
+
         self.thing_list = model_config['thing_list']
         self.labels = model_config['labels']
         self.class_names = model_config['class_names']

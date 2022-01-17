@@ -10,7 +10,7 @@ from napari_plugin_engine import napari_hook_implementation
 import numpy as np
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QPlainTextEdit
 
-import napari 
+import napari
 from napari import Viewer
 from napari.layers import Image, Shapes
 from magicgui import magicgui
@@ -27,7 +27,8 @@ def test_widget():
 
     # Import when users activate plugin
     from empanada_napari.orthoplane import TestEngine
-    from empanada_napari.utils import get_configs, load_config
+    from empanada_napari.utils import get_configs
+    from empanada.config_loaders import load_config
 
     # get list of all available model configs
     model_configs = get_configs()
@@ -36,8 +37,8 @@ def test_widget():
     @thread_worker
     def test_model(
         engine,
-        image, 
-        axis, 
+        image,
+        axis,
         plane
     ):
         # create the inference engine
@@ -45,7 +46,7 @@ def test_widget():
         seg = engine.infer(image)
         print(f'Inference time for image of shape {image.shape}:', time() - start)
         return seg, axis, plane
-        
+
     @magicgui(
         call_button='Test Parameters',
         layout='vertical',
@@ -55,8 +56,9 @@ def test_widget():
         confidence_thr=dict(widget_type='FloatSlider', value=0.5, min=0.1, max=0.9, step=0.1, label='Confidence Threshold'),
         center_confidence_thr=dict(widget_type='FloatSlider', value=0.1, min=1e-5, max=0.9, label='Center Confidence Threshold'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
-        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
+        fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         semantic_only=dict(widget_type='CheckBox', text='Semantic segmentation only?', value=False, tooltip='Only run semantic segmentation for all classes.'),
+        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.')
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -67,9 +69,10 @@ def test_widget():
         confidence_thr,
         center_confidence_thr,
         maximum_objects_per_class,
-        use_gpu,
+        fine_boundaries,
         semantic_only,
-    ):      
+        use_gpu
+    ):
         # load the model config
         model_config = load_config(model_configs[model_config])
         maximum_objects_per_class = int(maximum_objects_per_class)
@@ -82,13 +85,14 @@ def test_widget():
 
         if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
             widget.engine = TestEngine(
-                model_config, 
+                model_config,
                 inference_scale=downsampling,
-                nms_kernel=min_distance_object_centers, 
+                nms_kernel=min_distance_object_centers,
                 nms_threshold=center_confidence_thr,
                 confidence_thr=confidence_thr,
                 label_divisor=maximum_objects_per_class,
                 semantic_only=semantic_only,
+                fine_boundaries=fine_boundaries,
                 use_gpu=use_gpu
             )
             widget.last_config = model_config
@@ -102,7 +106,8 @@ def test_widget():
                 nms_threshold=center_confidence_thr,
                 nms_kernel=min_distance_object_centers,
                 confidence_thr=confidence_thr,
-                semantic_only=semantic_only
+                semantic_only=semantic_only,
+                fine_boundaries=fine_boundaries
             )
 
         def _get_current_slice(image_layer):
@@ -112,7 +117,7 @@ def test_widget():
             # handle multiscale by taking highest resolution level
             image = image_layer.data
             if image_layer.multiscale:
-                print(f'Multiscale image selected, using highest resolution level!')                    
+                print(f'Multiscale image selected, using highest resolution level!')
                 image = image[0]
 
             if image.ndim == 3:
