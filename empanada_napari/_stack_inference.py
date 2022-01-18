@@ -27,7 +27,7 @@ def stack_inference_widget():
     from empanada_napari.orthoplane import OrthoPlaneEngine, tracker_consensus, stack_postprocessing
     from empanada_napari.utils import get_configs, load_config
     from mitonet.inference import filters
-
+    
     # get list of all available model configs
     model_configs = get_configs()
 

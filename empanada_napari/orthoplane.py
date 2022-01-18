@@ -421,6 +421,8 @@ class OrthoPlaneEngine:
         imshape = list(volume.shape)
         del imshape[axis]
         h, w = imshape
+        
+        step_size = 100 / len(dataloader)
 
         fill_index = 0
         for batch in tqdm(dataloader, total=len(dataloader)):
@@ -428,6 +430,7 @@ class OrthoPlaneEngine:
             image = factor_pad(image, self.padding_factor)
 
             pan_seg = self.engine(image)
+            
             if pan_seg is None:
                 # building the queue
                 queue.put((fill_index, pan_seg))
@@ -446,7 +449,7 @@ class OrthoPlaneEngine:
                 pan_seg = pan_seg.squeeze()[:h, :w] # remove padding
                 queue.put((fill_index, pan_seg.cpu().numpy()))
                 fill_index += 1
-
+                
         print(f'Propagating labels backward...')
 
         # set the matchers to not assign new labels
