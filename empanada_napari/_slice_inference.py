@@ -44,7 +44,7 @@ def test_widget():
         return seg, axis, plane
 
     @magicgui(
-        call_button='Test Parameters',
+        call_button='Run 2D Inference',
         layout='vertical',
         model_config=dict(widget_type='ComboBox', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], label='Model', tooltip='Model to use for inference'),
         downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Downsampling before inference', tooltip='Downsampling factor to apply before inference'),

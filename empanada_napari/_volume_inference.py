@@ -51,7 +51,7 @@ def volume_inference_widget():
         return trackers_dict
 
     @magicgui(
-        call_button='Run XY Stack Inference',
+        call_button='Run 3D Inference',
         layout='vertical',
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
         median_slices=dict(widget_type='ComboBox', choices=[1, 3, 5, 7, 9], value=3, label='Median filter size', tooltip='Median filter size'),
