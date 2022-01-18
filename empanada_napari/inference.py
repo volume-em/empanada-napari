@@ -510,7 +510,8 @@ class OrthoPlaneEngine:
         print(f'Predicting {axis_name}...')
         for batch in tqdm(dataloader, total=len(dataloader)):
             image = batch['image']
-            pan_seg = self.engine(image, self.inference_scale)
+            size = batch['size']
+            pan_seg = self.engine(image, size, self.inference_scale)
 
             if pan_seg is None:
                 # building the median queue
