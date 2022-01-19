@@ -268,11 +268,12 @@ class TestEngine:
 
     def infer(self, image):
         # resize image to correct scale
+        size = image.shape
         image = resize_by_factor(image, self.inference_scale)
         image = self.tfs(image=image)['image'].unsqueeze(0)
 
         # engine handles upsampling and padding
-        pan_seg = self.engine(image, upsampling=self.inference_scale)
+        pan_seg = self.engine(image, size, upsampling=self.inference_scale)
         return pan_seg.squeeze().cpu().numpy()
 
 def run_forward_matchers(

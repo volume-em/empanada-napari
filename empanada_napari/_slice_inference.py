@@ -40,7 +40,7 @@ def test_widget():
         # create the inference engine
         start = time()
         seg = engine.infer(image)
-        print(f'Inference time for image of shape {image.shape}:', time() - start)
+        print(f'Inference time:', time() - start)
         return seg, axis, plane
 
     @magicgui(
