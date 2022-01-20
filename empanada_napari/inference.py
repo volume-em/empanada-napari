@@ -358,10 +358,16 @@ class OrthoPlaneEngine:
         self.padding_factor = model_config['padding_factor']
         self.inference_scale = inference_scale
 
+        # downgrade all thing classes
+        if semantic_only:
+            thing_list = []
+        else:
+            thing_list = self.thing_list
+
         # create the inference engine
         self.engine = MultiScaleInferenceEngine(
             base_model, render_model,
-            thing_list=self.thing_list,
+            thing_list=thing_list,
             median_kernel_size=median_kernel_size,
             label_divisor=label_divisor,
             nms_threshold=nms_threshold,
@@ -421,6 +427,7 @@ class OrthoPlaneEngine:
         min_size,
         min_extent,
         fine_boundaries,
+        semantic_only,
         store_url,
         save_panoptic
     ):
@@ -439,6 +446,11 @@ class OrthoPlaneEngine:
         self.engine.nms_kernel = nms_kernel
         self.engine.confidence_thr = confidence_thr
         self.engine.coarse_boundaries = not fine_boundaries
+
+        if semantic_only:
+            self.engine.thing_list = []
+        else:
+            self.engine.thing_list = self.thing_list
 
         # reset median queue for good measure
         self.engine.reset()
@@ -493,12 +505,9 @@ class OrthoPlaneEngine:
             drop_last=False, num_workers=0
         )
 
-        # create a separate tracker for
-        # each prediction axis and each segmentation class
+        # create necessary matchers and trackers
         trackers = self.create_trackers(volume.shape, axis_name)
         matchers = self.create_matchers()
-
-        # output stack
         stack = self.create_panoptic_stack(axis_name, volume.shape)
 
         # setup matcher for multiprocessing

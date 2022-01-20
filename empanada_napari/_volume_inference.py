@@ -21,6 +21,7 @@ def volume_inference_widget():
     import zarr
     import dask.array as da
     from empanada_napari.inference import OrthoPlaneEngine, tracker_consensus, stack_postprocessing
+    from empanada_napari.multigpu import MultiGPUOrthoplaneEngine
     from empanada_napari.utils import get_configs
     from empanada.config_loaders import load_config
     from empanada.inference import filters
@@ -50,9 +51,7 @@ def volume_inference_widget():
 
         return trackers_dict
 
-    @magicgui(
-        call_button='Run 3D Inference',
-        layout='vertical',
+    gui_params = dict(
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
         median_slices=dict(widget_type='ComboBox', choices=[1, 3, 5, 7, 9], value=3, label='Median filter size', tooltip='Median filter size'),
         downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Downsampling before inference', tooltip='Downsampling factor to apply before inference'),
@@ -69,6 +68,15 @@ def volume_inference_widget():
         orthoplane=dict(widget_type='CheckBox', text='Run orthoplane', value=False, tooltip='whether to run orthoplane inference'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
         store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Zarr Store Directory (optional)', mode='d', tooltip='location to store segmentations on disk'),
+    )
+
+    if torch.cuda.device_count() > 1:
+        gui_params['multigpu'] = dict(widget_type='CheckBox', text='MultiGPU?', value=True, tooltip='If checked, run on all available GPUs')
+
+    @magicgui(
+        call_button='Run 3D Inference',
+        layout='vertical',
+        **gui_params
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -88,7 +96,8 @@ def volume_inference_widget():
         return_panoptic,
         orthoplane,
         use_gpu,
-        store_dir
+        store_dir,
+        **kwargs
     ):
         # load the model config
         model_config_name = model_config
@@ -96,6 +105,11 @@ def volume_inference_widget():
         min_size = int(min_size)
         min_extent = int(min_extent)
         maximum_objects_per_class = int(maximum_objects_per_class)
+
+        if 'multigpu' in kwargs:
+            multigpu = kwargs['multigpu']
+        else:
+            multigpu = False
 
         # create the storage url from layer name and model config
         store_dir = str(store_dir)
@@ -112,7 +126,27 @@ def volume_inference_widget():
             widget.using_gpu = use_gpu
 
         # conditions where model needs to be (re)loaded
-        if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
+        if multigpu and (not hasattr(widget, 'engine')  or widget.last_config != model_config):
+            widget.engine = MultiGPUOrthoplaneEngine(
+                model_config,
+                inference_scale=downsampling,
+                median_kernel_size=median_slices,
+                nms_kernel=min_distance_object_centers,
+                nms_threshold=center_confidence_thr,
+                confidence_thr=confidence_thr,
+                merge_iou_thr=merge_iou_thr,
+                merge_ioa_thr=merge_ioa_thr,
+                min_size=min_size,
+                min_extent=min_extent,
+                fine_boundaries=fine_boundaries,
+                label_divisor=maximum_objects_per_class,
+                use_gpu=use_gpu,
+                semantic_only=semantic_only,
+                save_panoptic=return_panoptic,
+                store_url=store_url
+            )
+            widget.last_config = model_config
+        elif not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
             widget.engine = OrthoPlaneEngine(
                 model_config,
                 inference_scale=downsampling,
@@ -127,6 +161,7 @@ def volume_inference_widget():
                 fine_boundaries=fine_boundaries,
                 label_divisor=maximum_objects_per_class,
                 use_gpu=use_gpu,
+                semantic_only=semantic_only,
                 save_panoptic=return_panoptic,
                 store_url=store_url
             )
@@ -146,6 +181,7 @@ def volume_inference_widget():
                 min_extent=min_extent,
                 fine_boundaries=fine_boundaries,
                 label_divisor=maximum_objects_per_class,
+                semantic_only=semantic_only,
                 save_panoptic=return_panoptic,
                 store_url=store_url
             )
