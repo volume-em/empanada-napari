@@ -20,6 +20,7 @@ def volume_inference_widget():
     # Import when users activate plugin
     import zarr
     import dask.array as da
+    from torch.cuda import device_count
     from empanada_napari.inference import OrthoPlaneEngine, tracker_consensus, stack_postprocessing
     from empanada_napari.multigpu import MultiGPUOrthoplaneEngine
     from empanada_napari.utils import get_configs
@@ -66,11 +67,12 @@ def volume_inference_widget():
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         return_panoptic=dict(widget_type='CheckBox', text='Return panoptic', value=False, tooltip='whether to return the panoptic segmentations'),
         orthoplane=dict(widget_type='CheckBox', text='Run orthoplane', value=False, tooltip='whether to run orthoplane inference'),
+        semantic_only=dict(widget_type='CheckBox', text='Semantic segmentation only?', value=False, tooltip='Only run semantic segmentation for all classes.'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
         store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Zarr Store Directory (optional)', mode='d', tooltip='location to store segmentations on disk'),
     )
 
-    if torch.cuda.device_count() > 1:
+    if device_count() > 1:
         gui_params['multigpu'] = dict(widget_type='CheckBox', text='MultiGPU?', value=True, tooltip='If checked, run on all available GPUs')
 
     @magicgui(
@@ -95,9 +97,10 @@ def volume_inference_widget():
         fine_boundaries,
         return_panoptic,
         orthoplane,
+        semantic_only,
         use_gpu,
         store_dir,
-        **kwargs
+        multigpu=False
     ):
         # load the model config
         model_config_name = model_config
@@ -105,11 +108,6 @@ def volume_inference_widget():
         min_size = int(min_size)
         min_extent = int(min_extent)
         maximum_objects_per_class = int(maximum_objects_per_class)
-
-        if 'multigpu' in kwargs:
-            multigpu = kwargs['multigpu']
-        else:
-            multigpu = False
 
         # create the storage url from layer name and model config
         store_dir = str(store_dir)
@@ -140,7 +138,6 @@ def volume_inference_widget():
                 min_extent=min_extent,
                 fine_boundaries=fine_boundaries,
                 label_divisor=maximum_objects_per_class,
-                use_gpu=use_gpu,
                 semantic_only=semantic_only,
                 save_panoptic=return_panoptic,
                 store_url=store_url

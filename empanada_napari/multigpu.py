@@ -133,15 +133,15 @@ class MedianQueue:
             # take last item in the queue
             sem = self.sem_queue[-1]
             cells = self.cell_queue[-1]
-        elif nq > mid_idx and nq < self.qlen:
+        elif nq > self.mid_idx and nq < self.qlen:
             # nothing to return while queue builds
-            return None
+            return None, None
         else:
             # nq == median_kernel_size
             # use the middle item in the queue
             # with the median segmentation probs
             sem = self.get_median_sem()
-            cells = cell_queue[self.mid_idx]
+            cells = self.cell_queue[self.mid_idx]
 
         return sem, cells
 
@@ -267,15 +267,15 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_in, config):
 
 
     # load models and set engine class from file or url
-    if os.path.isfile(model_config[f'base_model_url']):
-        base_model = torch.jit.load(model_config[f'base_model_url'])
+    if os.path.isfile(config[f'base_model_gpu']):
+        base_model = torch.jit.load(config[f'base_model_gpu'])
     else:
-        base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_url'])
+        base_model = torch.hub.load_state_dict_from_url(config[f'base_model_gpu'])
 
-    if os.path.isfile(model_config[f'render_model_url']):
-        render_model = torch.jit.load(model_config[f'render_model_url'])
+    if os.path.isfile(config[f'render_model_gpu']):
+        render_model = torch.jit.load(config[f'render_model_gpu'])
     else:
-        render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_url'])
+        render_model = torch.hub.load_state_dict_from_url(config[f'render_model_gpu'])
 
     engine_cls = MultiScaleInferenceEngine
     torch.cuda.set_device(config['gpu'])
@@ -299,7 +299,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_in, config):
     if rank == 0:
         thing_list = config['engine_params']['thing_list']
         matchers = [
-            RLEMatcher(**config['matcher_params'])
+            RLEMatcher(thing_class, **config['matcher_params'])
             for thing_class in thing_list
         ]
 
@@ -336,7 +336,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_in, config):
         sem_logits = coarse_sem_logits.clone()
         features = output['semantic_x']
         sem, _ = inference_engine.upsample_logits(
-            sem_logits, coarse_sem_seg_logits,
+            sem_logits, coarse_sem_logits,
             features, upsampling * 4
         )
 
@@ -364,9 +364,11 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_in, config):
         queue.put(('finish', 'finish'))
         rle_stack = matcher_out.recv()[0]
         matcher_proc.join()
+        print('Closed matcher proc', len(rle_stack))
 
         # send the rle stack back to the main process
         rle_in.send([rle_stack])
+        print('sent rle stack')
         rle_in.close()
 
 class MultiGPUOrthoplaneEngine:
@@ -409,7 +411,7 @@ class MultiGPUOrthoplaneEngine:
         else:
             self.config['engine_params']['thing_list'] = self.config['thing_list']
 
-        self.config['engine_params']['inference_scale'] = inference_scale
+        self.config['inference_scale'] = inference_scale
         self.config['engine_params']['label_divisor'] = label_divisor
         self.config['engine_params']['median_kernel_size'] = median_kernel_size
         self.config['engine_params']['stuff_area'] = stuff_area
@@ -455,7 +457,7 @@ class MultiGPUOrthoplaneEngine:
 
     def create_matchers(self):
         matchers = [
-            RLEMatcher(**self.config['matcher_params'])
+            RLEMatcher(thing_class, **self.config['matcher_params'])
             for thing_class in self.config['thing_list']
         ]
         return matchers
@@ -499,6 +501,7 @@ class MultiGPUOrthoplaneEngine:
 
         # grab the zarr stack that was filled in
         rle_stack = rle_out.recv()[0]
+        print('received rle stack from GPUs', len(rle_stack))
 
         # run backward matching and tracking
         print('Propagating labels backward...')
