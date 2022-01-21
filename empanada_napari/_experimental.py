@@ -57,7 +57,6 @@ def multigpu_inference_widget():
         maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
         store_dir=dict(widget_type='FileEdit', value='./', label='Store Directory', mode='d', tooltip='location to store segmentations on disk'),
         overwrite=dict(widget_type='CheckBox', text='Overwrite stored files?', value=False, tooltip='whether to overwrite zarr stores in store dir'),
-        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -75,7 +74,6 @@ def multigpu_inference_widget():
         maximum_objects_per_class,
         store_dir,
         overwrite,
-        use_gpu
     ):
         # load the model config
         model_config_name = model_config
@@ -96,11 +94,8 @@ def multigpu_inference_widget():
         if not hasattr(widget, 'last_config'):
             widget.last_config = model_config
 
-        if not hasattr(widget, 'using_gpu'):
-            widget.using_gpu = use_gpu
-
         # conditions where model needs to be (re)loaded
-        if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
+        if not hasattr(widget, 'engine') or widget.last_config != model_config:
             widget.engine = MultiGPUOrthoplaneEngine(
                 store_url, model_config,
                 inference_scale=downsampling,
@@ -111,10 +106,8 @@ def multigpu_inference_widget():
                 merge_iou_thr=merge_iou_thr,
                 merge_ioa_thr=merge_ioa_thr,
                 label_divisor=maximum_objects_per_class,
-                use_gpu=use_gpu
             )
             widget.last_config = model_config
-            widget.using_gpu = use_gpu
 
         def _new_layers(mask, description):
             layers = []
