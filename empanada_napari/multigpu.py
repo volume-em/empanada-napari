@@ -257,7 +257,7 @@ def run_forward_matchers(
     matcher_in.send([rle_stack])
     matcher_in.close()
 
-def main_worker(gpu, volume, axis_name, rle_stack, rle_in, config):
+def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     config['gpu'] = gpu
     rank = gpu
     axis = config['axes'][axis_name]
@@ -364,12 +364,9 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_in, config):
         queue.put(('finish', 'finish'))
         rle_stack = matcher_out.recv()[0]
         matcher_proc.join()
-        print('Closed matcher proc', len(rle_stack))
 
         # send the rle stack back to the main process
-        rle_in.send([rle_stack])
-        print('sent rle stack')
-        rle_in.close()
+        rle_out.put([rle_stack])
 
 class MultiGPUOrthoplaneEngine:
     def __init__(
@@ -489,19 +486,23 @@ class MultiGPUOrthoplaneEngine:
         return stack
 
     def infer_on_axis(self, volume, axis_name):
+        ctx = mp.get_context('spawn')
+
         # create a pipe to get rle stack from main GPU process
-        rle_stack = []
-        rle_out, rle_in = mp.Pipe()
+        rle_out = ctx.Queue()
 
         # launch the GPU processes
-        mp.spawn(
+        rle_stack = []
+        context = mp.spawn(
             main_worker, nprocs=self.config['world_size'],
-            args=(volume, axis_name, rle_stack, rle_in, self.config)
+            args=(volume, axis_name, rle_stack, rle_out, self.config),
+            join=False
         )
+        
 
         # grab the zarr stack that was filled in
-        rle_stack = rle_out.recv()[0]
-        print('received rle stack from GPUs', len(rle_stack))
+        rle_stack = rle_out.get()[0]
+        context.join()
 
         # run backward matching and tracking
         print('Propagating labels backward...')
@@ -545,30 +546,4 @@ class MultiGPUOrthoplaneEngine:
             filters.remove_small_objects(tracker, min_size=self.min_size)
             filters.remove_pancakes(tracker, min_span=self.min_extent)
 
-        self.engine.reset()
-
         return stack, trackers
-
-def run_tracker(queue, trackers, tracker_in):
-    while True:
-        index, pan_seg = queue.get()
-        if index is None:
-            break
-        else:
-            for tracker in trackers:
-                tracker.update(pan_seg, index)
-
-    # finish tracking
-    for tracker in trackers:
-        tracker.finish()
-
-    tracker_in.send([trackers])
-    tracker_in.close()
-
-def run_zarr_put(queue, stack, axis):
-    while True:
-        index, pan_seg = queue.get()
-        if index is None:
-            break
-        else:
-            zarr_put3d(stack, index, pan_seg, axis)
