@@ -351,7 +351,7 @@ class OrthoPlaneEngine:
         else:
             render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
 
-        self.thing_list = model_config['thing_list']
+        self.model_config = model_config
         self.labels = model_config['labels']
         self.class_names = model_config['class_names']
         self.label_divisor = label_divisor
@@ -360,9 +360,9 @@ class OrthoPlaneEngine:
 
         # downgrade all thing classes
         if semantic_only:
-            thing_list = []
+            self.thing_list = []
         else:
-            thing_list = self.thing_list
+            self.thing_list = model_config['thing_list']
 
         # create the inference engine
         self.engine = MultiScaleInferenceEngine(
@@ -448,8 +448,10 @@ class OrthoPlaneEngine:
         self.engine.coarse_boundaries = not fine_boundaries
 
         if semantic_only:
+            self.thing_list = []
             self.engine.thing_list = []
         else:
+            self.thing_list = self.model_config['thing_list']
             self.engine.thing_list = self.thing_list
 
         # reset median queue for good measure
@@ -531,7 +533,7 @@ class OrthoPlaneEngine:
                 pan_seg = pan_seg.squeeze().cpu().numpy() # remove padding and unit dimensions
 
                 # convert to a compressed rle segmentation
-                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.force_connected)
+                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.thing_list, self.force_connected)
                 queue.put(rle_seg)
 
         final_segs = self.engine.empty_queue()
@@ -540,7 +542,7 @@ class OrthoPlaneEngine:
                 pan_seg = pan_seg.squeeze().cpu().numpy() # remove padding
 
                 # convert to a compressed rle segmentation
-                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.force_connected)
+                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.thing_list, self.force_connected)
                 queue.put(rle_seg)
 
         # finish and close forward matching process
