@@ -367,7 +367,7 @@ class OrthoPlaneEngine:
         # create the inference engine
         self.engine = MultiScaleInferenceEngine(
             base_model, render_model,
-            thing_list=thing_list,
+            thing_list=self.thing_list,
             median_kernel_size=median_kernel_size,
             label_divisor=label_divisor,
             nms_threshold=nms_threshold,
