@@ -77,12 +77,6 @@ def register_model_widget():
                 raise Exception("There should only be 1 .yaml file in zip!")
             config = load_config(config_files[0])
 
-            base_model_cpu: "https://www.dropbox.com/s/llv65sxfhhxim6t/mmm_base_model_optim_211119.pth?dl=1"
-            render_model_cpu: "https://www.dropbox.com/s/9icxkypab5g28ya/point_rend_model_211119.pth?dl=1"
-
-            base_model_gpu: "https://www.dropbox.com/s/8obhf2d595gt0kz/mmm_base_model_gpu.pth?dl=1"
-            render_model_gpu: "https://www.dropbox.com/s/e4p7ixklgj4rc19/point_rend_model_gpu.pth?dl=1"
-
             # get new names for the .pth files
             pth_files = glob(os.path.join(root_dir, '*.pth'))
             for fp in pth_files:
