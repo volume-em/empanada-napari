@@ -12,7 +12,6 @@ __all__ = [
     'slice_dock_widget',
     'volume_dock_widget',
     'register_model_dock_widget',
-    'napari_experimental_provide_function',
     'merge_labels_widget',
     'split_labels_widget',
     'jump_to_label_widget',

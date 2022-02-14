@@ -26,7 +26,9 @@ def volume_inference_widget():
     from empanada_napari.utils import get_configs
     from empanada.config_loaders import load_config
     from empanada.inference import filters
-
+    from stardist.utils import abspath    
+    
+    logo = abspath(__file__, 'resources/empanada_logo.png')
     # get list of all available model configs
     model_configs = get_configs()
 
@@ -76,12 +78,14 @@ def volume_inference_widget():
         gui_params['multigpu'] = dict(widget_type='CheckBox', text='MultiGPU?', value=True, tooltip='If checked, run on all available GPUs')
 
     @magicgui(
+        label_head= dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 3D Inference',
         layout='vertical',
         **gui_params
     )
     def widget(
         viewer: napari.viewer.Viewer,
+        label_head,
         image_layer: Image,
         model_config,
         median_slices,

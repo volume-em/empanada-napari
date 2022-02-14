@@ -42,8 +42,12 @@ def test_widget():
         seg = engine.infer(image)
         print(f'Inference time:', time() - start)
         return seg, axis, plane
+    
+    from stardist.utils import abspath    
+    logo = abspath(__file__, 'resources/empanada_logo.png')
 
     @magicgui(
+        label_head= dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 2D Inference',
         layout='vertical',
         model_config=dict(widget_type='ComboBox', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], label='Model', tooltip='Model to use for inference'),
@@ -58,6 +62,7 @@ def test_widget():
     )
     def widget(
         viewer: napari.viewer.Viewer,
+        label_head,
         image_layer: Image,
         model_config,
         downsampling,
