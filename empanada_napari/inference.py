@@ -20,7 +20,7 @@ from empanada.inference.matcher import RLEMatcher
 from empanada.array_utils import put
 from empanada.inference.rle import pan_seg_to_rle_seg, rle_seg_to_pan_seg
 from empanada.zarr_utils import *
-from empanada.consensus import merge_objects3d
+from empanada.consensus import merge_objects_from_trackers
 
 from napari.qt.threading import thread_worker
 
@@ -146,7 +146,7 @@ def tracker_consensus(
 
         # merge instances from orthoplane inference
         consensus_tracker = InstanceTracker(class_id, label_divisor, shape3d, 'xy')
-        consensus_tracker.instances = merge_objects3d(class_trackers)
+        consensus_tracker.instances = merge_objects_from_trackers(class_trackers)
 
         # inplace apply filters to final merged segmentation
         filters.remove_small_objects(consensus_tracker, min_size=min_size)
