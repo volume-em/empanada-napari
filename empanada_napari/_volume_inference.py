@@ -70,7 +70,6 @@ def volume_inference_widget():
         return_panoptic=dict(widget_type='CheckBox', text='Return panoptic', value=False, tooltip='whether to return the panoptic segmentations'),
         orthoplane=dict(widget_type='CheckBox', text='Run orthoplane', value=False, tooltip='whether to run orthoplane inference'),
         semantic_only=dict(widget_type='CheckBox', text='Semantic segmentation only?', value=False, tooltip='Only run semantic segmentation for all classes.'),
-        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.'),
         store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Zarr Store Directory (optional)', mode='d', tooltip='location to store segmentations on disk'),
     )
 
@@ -104,7 +103,6 @@ def volume_inference_widget():
         return_panoptic,
         orthoplane,
         semantic_only,
-        use_gpu,
         store_dir,
         use_gpu=False,
         multigpu=False

@@ -42,14 +42,11 @@ def test_widget():
         seg = engine.infer(image)
         print(f'Inference time:', time() - start)
         return seg, axis, plane
-    
-    from stardist.utils import abspath    
+
+    from stardist.utils import abspath
     logo = abspath(__file__, 'resources/empanada_logo.png')
 
-    @magicgui(
-        label_head= dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
-        call_button='Run 2D Inference',
-        layout='vertical',
+    gui_params = dict(
         model_config=dict(widget_type='ComboBox', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], label='Model', tooltip='Model to use for inference'),
         downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Downsampling before inference', tooltip='Downsampling factor to apply before inference'),
         min_distance_object_centers=dict(widget_type='Slider', value=3, min=3, max=21, label='Minimum distance between object centers.'),
@@ -58,7 +55,16 @@ def test_widget():
         maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         semantic_only=dict(widget_type='CheckBox', text='Semantic segmentation only?', value=False, tooltip='Only run semantic segmentation for all classes.'),
-        use_gpu=dict(widget_type='CheckBox', text='Use GPU?', value=True, tooltip='Run inference on GPU, if available.')
+    )
+
+    if device_count() >= 1:
+        gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=True, tooltip='If checked, run on GPU 0')
+
+    @magicgui(
+        label_head= dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
+        call_button='Run 2D Inference',
+        layout='vertical',
+        **gui_params
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -72,7 +78,7 @@ def test_widget():
         maximum_objects_per_class,
         fine_boundaries,
         semantic_only,
-        use_gpu
+        use_gpu=False
     ):
         # load the model config
         model_config = load_config(model_configs[model_config])
