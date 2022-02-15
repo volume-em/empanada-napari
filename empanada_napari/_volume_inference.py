@@ -68,7 +68,7 @@ def volume_inference_widget():
         cluster_iou_thr=dict(widget_type='FloatSpinBox', value=0.75, min=0.1, max=0.9, step=0.05, label='Cluster IoU Thr'),
         min_size=dict(widget_type='SpinBox', value=500, min=0, max=1e6, step=100, label='Min Size (Voxels)'),
         min_extent=dict(widget_type='SpinBox', value=5, min=0, max=1000, step=1, label='Min Box Extent'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value=str(1e5), label='Max objects per class'),
+        maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class'),
         return_panoptic=dict(widget_type='CheckBox', text='Return panoptic', value=False, tooltip='whether to return the panoptic segmentations'),
         orthoplane=dict(widget_type='CheckBox', text='Run orthoplane', value=False, tooltip='whether to run orthoplane inference'),
     )
