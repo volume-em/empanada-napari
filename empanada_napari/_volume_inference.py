@@ -26,8 +26,8 @@ def volume_inference_widget():
     from empanada_napari.utils import get_configs
     from empanada.config_loaders import load_config
     from empanada.inference import filters
-    from stardist.utils import abspath    
-    
+    from stardist.utils import abspath
+
     logo = abspath(__file__, 'resources/empanada_logo.png')
     # get list of all available model configs
     model_configs = get_configs()
@@ -74,8 +74,10 @@ def volume_inference_widget():
         store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Zarr Store Directory (optional)', mode='d', tooltip='location to store segmentations on disk'),
     )
 
-    if device_count() > 1:
-        gui_params['multigpu'] = dict(widget_type='CheckBox', text='MultiGPU?', value=True, tooltip='If checked, run on all available GPUs')
+    if device_count() >= 1:
+        gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=True, tooltip='If checked, run on GPU 0')
+        if device_count() > 1:
+            gui_params['multigpu'] = dict(widget_type='CheckBox', text='Multi GPU', value=False, tooltip='If checked, run on all available GPUs')
 
     @magicgui(
         label_head= dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
@@ -104,6 +106,7 @@ def volume_inference_widget():
         semantic_only,
         use_gpu,
         store_dir,
+        use_gpu=False,
         multigpu=False
     ):
         # load the model config
