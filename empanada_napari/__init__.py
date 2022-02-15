@@ -14,7 +14,7 @@ __all__ = [
     'register_model_dock_widget',
     'merge_labels_widget',
     'split_labels_widget',
-    'jump_to_label_widget',
-    'split_by_dist',
+    #'jump_to_label_widget',
+    #'split_by_dist',
     'delete_labels_widget'
 ]

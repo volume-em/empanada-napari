@@ -55,30 +55,29 @@ def volume_inference_widget():
 
     gui_params = dict(
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
-        median_slices=dict(widget_type='ComboBox', choices=[1, 3, 5, 7, 9], value=3, label='Median filter size', tooltip='Median filter size'),
-        downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Downsampling before inference', tooltip='Downsampling factor to apply before inference'),
-        min_distance_object_centers=dict(widget_type='Slider', value=3, min=3, max=21, label='Minimum distance between object centers.'),
-        confidence_thr=dict(widget_type='FloatSlider', value=0.5, min=0.1, max=0.9, step=0.1, label='Confidence Threshold'),
-        center_confidence_thr=dict(widget_type='FloatSlider', value=0.1, min=0.1, max=0.9, label='Center Confidence Threshold'),
-        merge_iou_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IoU Threshold'),
-        merge_ioa_thr=dict(widget_type='FloatSlider', value=0.25, max=0.9, label= 'IoA Threshold'),
-        min_size=dict(widget_type='LineEdit', value=500, label='Minimum object size in voxels'),
-        min_extent=dict(widget_type='LineEdit', value=4, label='Minimum extent of object bounding box'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
+        downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Image Downsampling', tooltip='Downsampling factor to apply before inference'),
+        confidence_thr=dict(widget_type='FloatSpinBox', value=0.5, min=0.1, max=0.9, step=0.1, label='Segmentation Confidence Thr'),
+        center_confidence_thr=dict(widget_type='FloatSpinBox', value=0.1, min=0.05, max=0.9, step=0.05, label='Center Confidence Thr'),
+        min_distance_object_centers=dict(widget_type='SpinBox', value=3, min=1, max=21, step=1, label='Centers Min Distance'),
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
+        semantic_only=dict(widget_type='CheckBox', text='Semantic only', value=False, tooltip='Only run semantic segmentation for all classes.'),
+        median_slices=dict(widget_type='ComboBox', choices=[1, 3, 5, 7, 9, 11], value=3, label='Median Filter Size', tooltip='Median filter size'),
+        merge_iou_thr=dict(widget_type='FloatSpinBox', value=0.25, min=0.1, max=0.9, step=0.05, label= 'IoU Matching Thr'),
+        merge_ioa_thr=dict(widget_type='FloatSpinBox', value=0.25, min=0.1, max=0.9, step=0.05, label= 'IoA Matching Thr'),
+        cluster_iou_thr=dict(widget_type='FloatSpinBox', value=0.75, min=0.1, max=0.9, step=0.05, label='Cluster IoU Thr'),
+        min_size=dict(widget_type='SpinBox', value=500, min=0, max=1e6, step=100, label='Min Size (Voxels)'),
+        min_extent=dict(widget_type='SpinBox', value=5, min=0, max=1000, step=1, label='Min Box Extent'),
+        maximum_objects_per_class=dict(widget_type='LineEdit', value=str(1e5), label='Max objects per class'),
         return_panoptic=dict(widget_type='CheckBox', text='Return panoptic', value=False, tooltip='whether to return the panoptic segmentations'),
         orthoplane=dict(widget_type='CheckBox', text='Run orthoplane', value=False, tooltip='whether to run orthoplane inference'),
-        semantic_only=dict(widget_type='CheckBox', text='Semantic segmentation only?', value=False, tooltip='Only run semantic segmentation for all classes.'),
-        store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Zarr Store Directory (optional)', mode='d', tooltip='location to store segmentations on disk'),
     )
 
-    if device_count() >= 1:
-        gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=True, tooltip='If checked, run on GPU 0')
-        if device_count() > 1:
-            gui_params['multigpu'] = dict(widget_type='CheckBox', text='Multi GPU', value=False, tooltip='If checked, run on all available GPUs')
+    gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0')
+    gui_params['multigpu'] = dict(widget_type='CheckBox', text='Multi GPU', value=False, tooltip='If checked, run on all available GPUs')
+    gui_params['store_dir']=dict(widget_type='FileEdit', value='no zarr storage', label='Zarr Directory (optional)', mode='d', tooltip='location to store segmentations on disk')
 
     @magicgui(
-        label_head= dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
+        label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 3D Inference',
         layout='vertical',
         **gui_params
@@ -88,23 +87,24 @@ def volume_inference_widget():
         label_head,
         image_layer: Image,
         model_config,
-        median_slices,
         downsampling,
-        min_distance_object_centers,
         confidence_thr,
         center_confidence_thr,
+        min_distance_object_centers,
+        fine_boundaries,
+        semantic_only,
+        median_slices,
         merge_iou_thr,
         merge_ioa_thr,
+        cluster_iou_thr,
         min_size,
         min_extent,
         maximum_objects_per_class,
-        fine_boundaries,
         return_panoptic,
         orthoplane,
-        semantic_only,
-        store_dir,
-        use_gpu=False,
-        multigpu=False
+        use_gpu,
+        multigpu,
+        store_dir
     ):
         # load the model config
         model_config_name = model_config
@@ -199,7 +199,7 @@ def volume_inference_widget():
             mask = args[0][0]
             if mask is not None:
                 try:
-                    _new_layers(mask, f'panoptic-xy-stack')
+                    _new_layers(mask, f'panoptic-stack')
 
                     for layer in viewer.layers:
                         layer.visible = False
@@ -235,7 +235,7 @@ def volume_inference_widget():
         def start_consensus_worker(trackers_dict):
             consensus_worker = tracker_consensus(
                 trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
-                min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
+                cluster_iou_thr=cluster_iou_thr, min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
             )
             consensus_worker.yielded.connect(_new_class_stack)
             consensus_worker.start()

@@ -120,6 +120,7 @@ def tracker_consensus(
     store_url,
     model_config,
     label_divisor=1000,
+    cluster_iou_thr=0.75,
     min_size=200,
     min_extent=4,
     dtype=np.uint64
@@ -146,7 +147,7 @@ def tracker_consensus(
 
         # merge instances from orthoplane inference
         consensus_tracker = InstanceTracker(class_id, label_divisor, shape3d, 'xy')
-        consensus_tracker.instances = merge_objects_from_trackers(class_trackers)
+        consensus_tracker.instances = merge_objects_from_trackers(class_trackers, cluster_iou_thr)
 
         # inplace apply filters to final merged segmentation
         filters.remove_small_objects(consensus_tracker, min_size=min_size)

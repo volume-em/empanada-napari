@@ -20,6 +20,7 @@ import dask.array as da
 def test_widget():
     import cv2
     from time import time
+    from torch.cuda import device_count
     from napari.qt.threading import thread_worker
 
     # Import when users activate plugin
@@ -47,17 +48,16 @@ def test_widget():
 
     gui_params = dict(
         model_config=dict(widget_type='ComboBox', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], label='Model', tooltip='Model to use for inference'),
-        downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Downsampling before inference', tooltip='Downsampling factor to apply before inference'),
-        min_distance_object_centers=dict(widget_type='Slider', value=3, min=3, max=21, label='Minimum distance between object centers.'),
-        confidence_thr=dict(widget_type='FloatSlider', value=0.5, min=0.1, max=0.9, step=0.1, label='Confidence Threshold'),
-        center_confidence_thr=dict(widget_type='FloatSlider', value=0.1, min=1e-5, max=0.9, label='Center Confidence Threshold'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value=20000, label='Max objects per class'),
+        downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Image Downsampling', tooltip='Downsampling factor to apply before inference'),
+        confidence_thr=dict(widget_type='FloatSpinBox', value=0.5, min=0.1, max=0.9, step=0.1, label='Segmentation Confidence Thr'),
+        center_confidence_thr=dict(widget_type='FloatSpinBox', value=0.1, min=0.05, max=0.9, step=0.05, label='Center Confidence Thr'),
+        min_distance_object_centers=dict(widget_type='SpinBox', value=3, min=1, max=21, step=1, label='Centers Min Distance'),
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
-        semantic_only=dict(widget_type='CheckBox', text='Semantic segmentation only?', value=False, tooltip='Only run semantic segmentation for all classes.'),
+        semantic_only=dict(widget_type='CheckBox', text='Semantic only', value=False, tooltip='Only run semantic segmentation for all classes.'),
+        maximum_objects_per_class=dict(widget_type='LineEdit', value=str(1e5), label='Max objects per class'),
     )
 
-    if device_count() >= 1:
-        gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=True, tooltip='If checked, run on GPU 0')
+    gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0')
 
     @magicgui(
         label_head= dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
@@ -71,13 +71,13 @@ def test_widget():
         image_layer: Image,
         model_config,
         downsampling,
-        min_distance_object_centers,
         confidence_thr,
         center_confidence_thr,
-        maximum_objects_per_class,
+        min_distance_object_centers,
         fine_boundaries,
         semantic_only,
-        use_gpu=False
+        maximum_objects_per_class,
+        use_gpu
     ):
         # load the model config
         model_config = load_config(model_configs[model_config])
