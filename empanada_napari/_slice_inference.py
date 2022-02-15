@@ -54,7 +54,7 @@ def test_widget():
         min_distance_object_centers=dict(widget_type='SpinBox', value=3, min=1, max=21, step=1, label='Centers Min Distance'),
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         semantic_only=dict(widget_type='CheckBox', text='Semantic only', value=False, tooltip='Only run semantic segmentation for all classes.'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value='100000',, label='Max objects per class'),
+        maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class'),
     )
 
     gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0')
