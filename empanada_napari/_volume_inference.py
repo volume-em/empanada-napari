@@ -65,9 +65,10 @@ def volume_inference_widget():
         pixel_vote_thr=dict(widget_type='FloatSpinBox', value=0.5, min=0.1, max=0.9, step=0.1, label='Voxel Vote Thr'),
         merge_iou_thr=dict(widget_type='FloatSpinBox', value=0.25, min=0.1, max=0.9, step=0.05, label= 'IoU Matching Thr'),
         merge_ioa_thr=dict(widget_type='FloatSpinBox', value=0.25, min=0.1, max=0.9, step=0.05, label= 'IoA Matching Thr'),
-        cluster_iou_thr=dict(widget_type='FloatSpinBox', value=0.75, min=0.1, max=0.9, step=0.05, label='Cluster IoU Thr'),
         min_size=dict(widget_type='SpinBox', value=500, min=0, max=1e6, step=100, label='Min Size (Voxels)'),
         min_extent=dict(widget_type='SpinBox', value=5, min=0, max=1000, step=1, label='Min Box Extent'),
+        cluster_iou_thr=dict(widget_type='FloatSpinBox', value=0.75, min=0.1, max=0.9, step=0.05, label='Cluster IoU Thr'),
+        allow_minority_clusters=dict(widget_type='CheckBox', text='Allow Minority Clusters', value=False, tooltip='Whether to allow minority clusters'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class'),
         return_panoptic=dict(widget_type='CheckBox', text='Return panoptic', value=False, tooltip='whether to return the panoptic segmentations'),
         orthoplane=dict(widget_type='CheckBox', text='Run orthoplane', value=False, tooltip='whether to run orthoplane inference'),
@@ -98,9 +99,10 @@ def volume_inference_widget():
         pixel_vote_thr,
         merge_iou_thr,
         merge_ioa_thr,
-        cluster_iou_thr,
         min_size,
         min_extent,
+        cluster_iou_thr,
+        allow_minority_clusters,
         maximum_objects_per_class,
         return_panoptic,
         orthoplane,
@@ -237,7 +239,8 @@ def volume_inference_widget():
         def start_consensus_worker(trackers_dict):
             consensus_worker = tracker_consensus(
                 trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class, pixel_vote_thr=pixel_vote_thr,
-                cluster_iou_thr=cluster_iou_thr, min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
+                cluster_iou_thr=cluster_iou_thr, allow_minority_clusters=allow_minority_clusters,
+                min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
             )
             consensus_worker.yielded.connect(_new_class_stack)
             consensus_worker.start()
