@@ -23,10 +23,9 @@ def volume_inference_widget():
     from torch.cuda import device_count
     from empanada_napari.inference import OrthoPlaneEngine, tracker_consensus, stack_postprocessing
     from empanada_napari.multigpu import MultiGPUOrthoplaneEngine
-    from empanada_napari.utils import get_configs
+    from empanada_napari.utils import get_configs, abspath
     from empanada.config_loaders import load_config
     from empanada.inference import filters
-    from stardist.utils import abspath
 
     logo = abspath(__file__, 'resources/empanada_logo.png')
     # get list of all available model configs

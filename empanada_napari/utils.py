@@ -1,8 +1,18 @@
 import os
+from pathlib import Path
 
 __all__ = [
+    'abspath'
     'get_configs',
 ]
+
+def abspath(root, relpath):
+    root = Path(root)
+    if root.is_dir():
+        path = root/relpath
+    else:
+        path = root.parent/relpath
+    return str(path.absolute())
 
 def get_configs():
     # get dict of all model configs

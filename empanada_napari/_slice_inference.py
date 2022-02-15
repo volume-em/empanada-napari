@@ -24,7 +24,7 @@ def test_widget():
 
     # Import when users activate plugin
     from empanada_napari.inference import TestEngine
-    from empanada_napari.utils import get_configs
+    from empanada_napari.utils import get_configs, abspath
     from empanada.config_loaders import load_config
 
     # get list of all available model configs
@@ -43,7 +43,6 @@ def test_widget():
         print(f'Inference time:', time() - start)
         return seg, axis, plane
 
-    from stardist.utils import abspath
     logo = abspath(__file__, 'resources/empanada_logo.png')
 
     gui_params = dict(
