@@ -25,7 +25,7 @@ from empanada.inference.postprocess import factor_pad, merge_semantic_and_instan
 from empanada.array_utils import put
 from empanada.inference.rle import pan_seg_to_rle_seg, rle_seg_to_pan_seg
 from empanada.zarr_utils import *
-from empanada.consensus import merge_objects3d
+from empanada.consensus import merge_objects_from_trackers
 
 from napari.qt.threading import thread_worker
 
@@ -358,7 +358,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
                 queue.put(
                     (sem[..., :h, :w], cells[..., :h, :w])
                 )
-                
+
     # pass None to queue to mark the end of inference
     if rank == 0:
         queue.put(('finish', 'finish'))
@@ -498,7 +498,7 @@ class MultiGPUOrthoplaneEngine:
             args=(volume, axis_name, rle_stack, rle_out, self.config),
             join=False
         )
-        
+
 
         # grab the zarr stack that was filled in
         rle_stack = rle_out.get()[0]
