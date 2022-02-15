@@ -62,6 +62,7 @@ def volume_inference_widget():
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         semantic_only=dict(widget_type='CheckBox', text='Semantic only', value=False, tooltip='Only run semantic segmentation for all classes.'),
         median_slices=dict(widget_type='ComboBox', choices=[1, 3, 5, 7, 9, 11], value=3, label='Median Filter Size', tooltip='Median filter size'),
+        pixel_vote_thr=dict(widget_type='FloatSpinBox', value=0.5, min=0.1, max=0.9, step=0.1, label='Voxel Vote Thr'),
         merge_iou_thr=dict(widget_type='FloatSpinBox', value=0.25, min=0.1, max=0.9, step=0.05, label= 'IoU Matching Thr'),
         merge_ioa_thr=dict(widget_type='FloatSpinBox', value=0.25, min=0.1, max=0.9, step=0.05, label= 'IoA Matching Thr'),
         cluster_iou_thr=dict(widget_type='FloatSpinBox', value=0.75, min=0.1, max=0.9, step=0.05, label='Cluster IoU Thr'),
@@ -94,6 +95,7 @@ def volume_inference_widget():
         fine_boundaries,
         semantic_only,
         median_slices,
+        pixel_vote_thr,
         merge_iou_thr,
         merge_ioa_thr,
         cluster_iou_thr,
@@ -234,7 +236,7 @@ def volume_inference_widget():
 
         def start_consensus_worker(trackers_dict):
             consensus_worker = tracker_consensus(
-                trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
+                trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class, pixel_vote_thr=pixel_vote_thr,
                 cluster_iou_thr=cluster_iou_thr, min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
             )
             consensus_worker.yielded.connect(_new_class_stack)
