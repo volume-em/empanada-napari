@@ -1,3 +1,6 @@
-napari-plugin-engine
+napari-plugin-engine>=0.1.4
 imagecodecs
-git+https://github.com/volume-em/MitoNet.git#egg=my-git-package
+scikit-image
+empanada
+albumentations
+zarr
