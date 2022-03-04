@@ -1,6 +1,4 @@
+scikit-image>=0.18
+empanada-dl>=0.1.2
 napari-plugin-engine>=0.1.4
 imagecodecs
-scikit-image
-empanada
-albumentations
-zarr

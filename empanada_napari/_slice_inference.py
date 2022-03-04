@@ -24,9 +24,9 @@ def test_widget():
     from napari.qt.threading import thread_worker
 
     # Import when users activate plugin
-    from empanada_napari.inference import TestEngine
+    from empanada_napari.inference import Engine2d
     from empanada_napari.utils import get_configs, abspath
-    from empanada.config_loaders import load_config
+    from empanada.config_loaders import read_yaml
 
     # get list of all available model configs
     model_configs = get_configs()
@@ -80,7 +80,7 @@ def test_widget():
         use_gpu
     ):
         # load the model config
-        model_config = load_config(model_configs[model_config])
+        model_config = read_yaml(model_configs[model_config])
         maximum_objects_per_class = int(maximum_objects_per_class)
 
         if not hasattr(widget, 'last_config'):
@@ -90,7 +90,7 @@ def test_widget():
             widget.using_gpu = use_gpu
 
         if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
-            widget.engine = TestEngine(
+            widget.engine = Engine2d(
                 model_config,
                 inference_scale=downsampling,
                 nms_kernel=min_distance_object_centers,

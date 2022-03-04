@@ -13,7 +13,7 @@ def register_model_widget():
     from glob import glob
     from zipfile import ZipFile
     from napari.qt.threading import thread_worker
-    from empanada.config_loaders import load_config
+    from empanada.config_loaders import read_yaml
 
     @thread_worker
     def unzip_model_files(zip_file, destination):
@@ -75,7 +75,7 @@ def register_model_widget():
             config_files = glob(os.path.join(root_dir, '*.yaml'))
             if not len(config_files) == 1:
                 raise Exception("There should only be 1 .yaml file in zip!")
-            config = load_config(config_files[0])
+            config = read_yaml(config_files[0])
 
             # get new names for the .pth files
             pth_files = glob(os.path.join(root_dir, '*.pth'))

@@ -21,10 +21,10 @@ def volume_inference_widget():
     import zarr
     import dask.array as da
     from torch.cuda import device_count
-    from empanada_napari.inference import OrthoPlaneEngine, tracker_consensus, stack_postprocessing
-    from empanada_napari.multigpu import MultiGPUOrthoplaneEngine
+    from empanada_napari.inference import Engine3d, tracker_consensus, stack_postprocessing
+    from empanada_napari.multigpu import MultiGPUEngine3d
     from empanada_napari.utils import get_configs, abspath
-    from empanada.config_loaders import load_config
+    from empanada.config_loaders import read_yaml
     from empanada.inference import filters
 
     logo = abspath(__file__, 'resources/empanada_logo.png')
@@ -62,13 +62,13 @@ def volume_inference_widget():
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         semantic_only=dict(widget_type='CheckBox', text='Semantic only', value=False, tooltip='Only run semantic segmentation for all classes.'),
         median_slices=dict(widget_type='ComboBox', choices=[1, 3, 5, 7, 9, 11], value=3, label='Median Filter Size', tooltip='Median filter size'),
-        pixel_vote_thr=dict(widget_type='FloatSpinBox', value=0.5, min=0.1, max=0.9, step=0.1, label='Voxel Vote Thr'),
+        pixel_vote_thr=dict(widget_type='SpinBox', value=2, min=1, max=3, step=1, label='Voxel Vote Thr'),
         merge_iou_thr=dict(widget_type='FloatSpinBox', value=0.25, min=0.1, max=0.9, step=0.05, label= 'IoU Matching Thr'),
         merge_ioa_thr=dict(widget_type='FloatSpinBox', value=0.25, min=0.1, max=0.9, step=0.05, label= 'IoA Matching Thr'),
         min_size=dict(widget_type='SpinBox', value=500, min=0, max=1e6, step=100, label='Min Size (Voxels)'),
         min_extent=dict(widget_type='SpinBox', value=5, min=0, max=1000, step=1, label='Min Box Extent'),
         cluster_iou_thr=dict(widget_type='FloatSpinBox', value=0.75, min=0.1, max=0.9, step=0.05, label='Cluster IoU Thr'),
-        allow_minority_clusters=dict(widget_type='CheckBox', text='Allow Minority Clusters', value=False, tooltip='Whether to allow minority clusters'),
+        allow_one_view=dict(widget_type='CheckBox', text='Allow detections from 1 stack', value=False, tooltip='Whether to allow detections into consensus that were picked up by inference in just 1 stack'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class'),
         return_panoptic=dict(widget_type='CheckBox', text='Return panoptic', value=False, tooltip='whether to return the panoptic segmentations'),
         orthoplane=dict(widget_type='CheckBox', text='Run orthoplane', value=False, tooltip='whether to run orthoplane inference'),
@@ -102,7 +102,7 @@ def volume_inference_widget():
         min_size,
         min_extent,
         cluster_iou_thr,
-        allow_minority_clusters,
+        allow_one_view,
         maximum_objects_per_class,
         return_panoptic,
         orthoplane,
@@ -112,7 +112,7 @@ def volume_inference_widget():
     ):
         # load the model config
         model_config_name = model_config
-        model_config = load_config(model_configs[model_config])
+        model_config = read_yaml(model_configs[model_config])
         min_size = int(min_size)
         min_extent = int(min_extent)
         maximum_objects_per_class = int(maximum_objects_per_class)
@@ -133,7 +133,7 @@ def volume_inference_widget():
 
         # conditions where model needs to be (re)loaded
         if multigpu and (not hasattr(widget, 'engine')  or widget.last_config != model_config):
-            widget.engine = MultiGPUOrthoplaneEngine(
+            widget.engine = MultiGPUEngine3d(
                 model_config,
                 inference_scale=downsampling,
                 median_kernel_size=median_slices,
@@ -152,7 +152,7 @@ def volume_inference_widget():
             )
             widget.last_config = model_config
         elif not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
-            widget.engine = OrthoPlaneEngine(
+            widget.engine = Engine3d(
                 model_config,
                 inference_scale=downsampling,
                 median_kernel_size=median_slices,
@@ -239,7 +239,7 @@ def volume_inference_widget():
         def start_consensus_worker(trackers_dict):
             consensus_worker = tracker_consensus(
                 trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class, pixel_vote_thr=pixel_vote_thr,
-                cluster_iou_thr=cluster_iou_thr, allow_minority_clusters=allow_minority_clusters,
+                cluster_iou_thr=cluster_iou_thr, allow_one_view=allow_one_view,
                 min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
             )
             consensus_worker.yielded.connect(_new_class_stack)

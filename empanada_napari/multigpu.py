@@ -4,8 +4,6 @@ import yaml
 import pickle
 import functools
 import numpy as np
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
 from collections import deque
 
 import torch
@@ -18,7 +16,7 @@ from tqdm import tqdm
 
 from empanada.data import VolumeDataset
 from empanada.inference import filters
-from empanada.inference.engines import MultiScaleInferenceEngine
+from empanada.inference.engines import PanopticDeepLabMultiGPU
 from empanada.inference.tracker import InstanceTracker
 from empanada.inference.matcher import RLEMatcher
 from empanada.inference.postprocess import factor_pad, merge_semantic_and_instance
@@ -28,14 +26,15 @@ from empanada.zarr_utils import *
 
 from napari.qt.threading import thread_worker
 
+from empanada_napari.utils import Preprocessor
+
 #----------------------------------------------------------
 # Utilities for all gathering outputs from each GPU process
 #----------------------------------------------------------
 
 @functools.lru_cache()
 def _get_global_gloo_group():
-    """
-    Return a process group based on gloo backend, containing all the ranks
+    r"""Return a process group based on gloo backend, containing all the ranks
     The result is cached.
     """
     if dist.get_backend() == "nccl":
@@ -68,8 +67,7 @@ def _serialize_to_tensor(data, group):
     return tensor
 
 def all_gather(data, group=None):
-    """
-    Run all_gather on arbitrary picklable data (not necessarily tensors).
+    r"""Run all_gather on arbitrary picklable data (not necessarily tensors).
     Args:
         data: any picklable object
         group: a torch process group. By default, will use a group which
@@ -185,8 +183,7 @@ def run_forward_matchers(
     matcher_in,
     end_signal='finish',
 ):
-    """
-    Run forward matching of instances between slices in a separate process
+    r"""Run forward matching of instances between slices in a separate process
     on CPU while model is performing inference on GPU.
     """
     # create the queue for sem and instance cells
@@ -279,15 +276,12 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     engine_cls = MultiScaleInferenceEngine
     torch.cuda.set_device(config['gpu'])
 
-    eval_tfs = A.Compose([
-        A.Normalize(**config['norms']),
-        ToTensorV2()
-    ])
+    preprocessor = Preprocessor(**config['norms'])
 
     # create the dataloader
     shape = volume.shape
     upsampling = config['inference_scale']
-    dataset = VolumeDataset(volume, axis, eval_tfs, scale=upsampling)
+    dataset = VolumeDataset(volume, axis, preprocessor, scale=upsampling)
     sampler = DistributedSampler(dataset, shuffle=False)
     dataloader = DataLoader(
         dataset, batch_size=1, shuffle=False, pin_memory=True,
@@ -367,7 +361,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         # send the rle stack back to the main process
         rle_out.put([rle_stack])
 
-class MultiGPUOrthoplaneEngine:
+class MultiGPUEngine3d:
     def __init__(
         self,
         model_config,

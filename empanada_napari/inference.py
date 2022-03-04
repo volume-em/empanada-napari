@@ -3,8 +3,6 @@ import zarr
 import yaml
 import numpy as np
 import torch
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
 
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
@@ -14,7 +12,7 @@ from empanada.data import VolumeDataset
 from empanada.data.utils import resize_by_factor
 
 from empanada.inference import filters
-from empanada.inference.engines import MultiScaleInferenceEngine
+from empanada.inference.engines import PanopticDeepLabRenderEngine3d
 from empanada.inference.tracker import InstanceTracker
 from empanada.inference.matcher import RLEMatcher
 from empanada.array_utils import put
@@ -24,7 +22,10 @@ from empanada.consensus import merge_objects_from_trackers
 
 from napari.qt.threading import thread_worker
 
+from empanada_napari.utils import Preprocessor
+
 def instance_relabel(tracker):
+    r"""Relabels instances starting from 1"""
     instance_id = 1
     instances = {}
     for instance_attr in tracker.instances.values():
@@ -48,6 +49,7 @@ def instance_relabel(tracker):
     return instances
 
 def numpy_fill_instances(volume, instances):
+    r"""Helper function to fill numpy volume with run length encoded instances"""
     shape = volume.shape
     volume = volume.reshape(-1)
     for instance_id, instance_attrs in instances.items():
@@ -68,8 +70,12 @@ def stack_postprocessing(
     label_divisor=1000,
     min_size=200,
     min_extent=4,
-    dtype=np.uint64
+    dtype=np.uint64,
+    chunk_size=(96, 96, 96)
 ):
+    r"""Relabels and filters each class defined in trackers. Yields a numpy
+    or zarr volume along with the name of the class that is segmented.
+    """
     labels = model_config['labels']
     class_names = model_config['class_names']
     if store_url is not None:
@@ -105,7 +111,7 @@ def stack_postprocessing(
         if zarr_store is not None:
             stack_vol = zarr_store.create_dataset(
                 f'{class_name}_pred', shape=shape3d, dtype=dtype,
-                overwrite=True, chunks=(1, None, None)
+                overwrite=True, chunks=chunk_size
             )
             zarr_fill_instances(stack_vol, stack_tracker.instances)
         else:
@@ -120,13 +126,16 @@ def tracker_consensus(
     store_url,
     model_config,
     label_divisor=1000,
-    pixel_vote_thr=0.25,
+    pixel_vote_thr=2,
     cluster_iou_thr=0.75,
-    allow_minority_clusters=False,
+    allow_one_view=False,
     min_size=200,
     min_extent=4,
     dtype=np.uint64
 ):
+    r"""Calculate the orthoplane consensus from trackers. Yields a numpy
+    or zarr volume along with the name of the class that is segmented.
+    """
     labels = model_config['labels']
     class_names = model_config['class_names']
     if store_url is not None:
@@ -149,7 +158,9 @@ def tracker_consensus(
 
         # merge instances from orthoplane inference
         consensus_tracker = InstanceTracker(class_id, label_divisor, shape3d, 'xy')
-        consensus_tracker.instances = merge_objects_from_trackers(class_trackers, pixel_vote_thr, cluster_iou_thr, bypass=allow_minority_clusters)
+        consensus_tracker.instances = merge_objects_from_trackers(
+            class_trackers, pixel_vote_thr, cluster_iou_thr, bypass=allow_one_view
+        )
 
         # inplace apply filters to final merged segmentation
         filters.remove_small_objects(consensus_tracker, min_size=min_size)
@@ -170,7 +181,8 @@ def tracker_consensus(
 
         yield consensus_vol, class_name
 
-class TestEngine:
+class Engine2d:
+    r"""Engine for 2D and parameter testing."""
     def __init__(
         self,
         model_config,
@@ -187,18 +199,26 @@ class TestEngine:
         if torch.cuda.is_available() and use_gpu:
             device = 'gpu'
         else:
+            print('Testing on CPU')
             device = 'cpu'
 
         # load the base and render models from file or url
         if os.path.isfile(model_config[f'base_model_{device}']):
+            print(f'base_model_{device}', model_config[f'base_model_{device}'])
             base_model = torch.jit.load(model_config[f'base_model_{device}'])
         else:
             base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
 
         if os.path.isfile(model_config[f'render_model_{device}']):
+            print(f'render_model_{device}', model_config[f'render_model_{device}'])
             render_model = torch.jit.load(model_config[f'render_model_{device}'])
         else:
             render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
+
+        # move them to gpu if needed
+        if device == 'gpu':
+            base_model = base_model.cuda()
+            render_model = render_model.cuda()
 
         self.thing_list = model_config['thing_list']
         self.labels = model_config['labels']
@@ -214,26 +234,23 @@ class TestEngine:
             thing_list = self.thing_list
 
         # create the inference engine
-        self.engine = MultiScaleInferenceEngine(
-            base_model, render_model,
+        render_models = {'sem_logits': render_model}
+        self.engine = PanopticDeepLabRenderEngine3d(
+            base_model, render_models,
             thing_list=thing_list,
-            median_kernel_size=1,
+            median_kernel_size=1, # no median filter in 2d
             label_divisor=label_divisor,
             nms_threshold=nms_threshold,
             nms_kernel=nms_kernel,
             confidence_thr=confidence_thr,
             padding_factor=self.padding_factor,
-            coarse_boundaries=not fine_boundaries,
-            device=device
+            coarse_boundaries=not fine_boundaries
         )
 
         # set the image transforms
         norms = model_config['norms']
         gray_channels = 1
-        self.tfs = A.Compose([
-            A.Normalize(**norms),
-            ToTensorV2()
-        ])
+        self.preprocessor = Preprocessor(**norms)
 
     def update_params(
         self,
@@ -273,7 +290,7 @@ class TestEngine:
         # resize image to correct scale
         size = image.shape
         image = resize_by_factor(image, self.inference_scale)
-        image = self.tfs(image=image)['image'].unsqueeze(0)
+        image = self.preprocessor(image)['image'].unsqueeze(0)
 
         # engine handles upsampling and padding
         pan_seg = self.engine(image, size, upsampling=self.inference_scale)
@@ -286,8 +303,7 @@ def run_forward_matchers(
     matcher_in,
     end_signal='finish'
 ):
-    """
-    Run forward matching of instances between slices in a separate process
+    r"""Run forward matching of instances between slices in a separate process
     on CPU while model is performing inference on GPU.
     """
     # go until queue gets the kill signal
@@ -314,7 +330,8 @@ def run_forward_matchers(
     matcher_in.send([rle_stack])
     matcher_in.close()
 
-class OrthoPlaneEngine:
+class Engine3d:
+    r"""Engine for 3D ortho-plane and stack inference"""
     def __init__(
         self,
         model_config,
@@ -354,6 +371,11 @@ class OrthoPlaneEngine:
         else:
             render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
 
+        # move them to gpu if needed
+        if device == 'gpu':
+            base_model = base_model.cuda()
+            render_model = render_model.cuda()
+
         self.model_config = model_config
         self.labels = model_config['labels']
         self.class_names = model_config['class_names']
@@ -368,8 +390,9 @@ class OrthoPlaneEngine:
             self.thing_list = model_config['thing_list']
 
         # create the inference engine
-        self.engine = MultiScaleInferenceEngine(
-            base_model, render_model,
+        render_models = {'sem_logits': render_model}
+        self.engine = PanopticDeepLabRenderEngine3d(
+            base_model, render_models,
             thing_list=self.thing_list,
             median_kernel_size=median_kernel_size,
             label_divisor=label_divisor,
@@ -377,17 +400,13 @@ class OrthoPlaneEngine:
             nms_kernel=nms_kernel,
             confidence_thr=confidence_thr,
             padding_factor=self.padding_factor,
-            coarse_boundaries=not fine_boundaries,
-            device=device
+            coarse_boundaries=not fine_boundaries
         )
 
         # set the image transforms
         norms = model_config['norms']
         gray_channels = 1
-        self.tfs = A.Compose([
-            A.Normalize(**norms),
-            ToTensorV2()
-        ])
+        self.preprocessor = Preprocessor(**norms)
 
         self.axes = {'xy': 0, 'xz': 1, 'yz': 2}
         self.merge_iou_thr = merge_iou_thr
@@ -504,7 +523,7 @@ class OrthoPlaneEngine:
     def infer_on_axis(self, volume, axis_name):
         axis = self.axes[axis_name]
         # create the dataloader
-        dataset = VolumeDataset(volume, axis, self.tfs, scale=self.inference_scale)
+        dataset = VolumeDataset(volume, axis, self.preprocessor, scale=self.inference_scale)
         dataloader = DataLoader(
             dataset, batch_size=1, shuffle=False, pin_memory=False,
             drop_last=False, num_workers=0
@@ -539,7 +558,7 @@ class OrthoPlaneEngine:
                 rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.thing_list, self.force_connected)
                 queue.put(rle_seg)
 
-        final_segs = self.engine.empty_queue()
+        final_segs = self.engine.end()
         if final_segs:
             for i, pan_seg in enumerate(final_segs):
                 pan_seg = pan_seg.squeeze().cpu().numpy() # remove padding
