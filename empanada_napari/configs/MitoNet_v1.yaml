@@ -1,8 +1,8 @@
-base_model_cpu: "https://www.dropbox.com/s/llv65sxfhhxim6t/mmm_base_model_optim_211119.pth?dl=1"
-render_model_cpu: "https://www.dropbox.com/s/9icxkypab5g28ya/point_rend_model_211119.pth?dl=1"
+base_model_cpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_base_cpu.pth?download=1"
+render_model_cpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_render_cpu.pth?download=1"
 
-base_model_gpu: "https://www.dropbox.com/s/8obhf2d595gt0kz/mmm_base_model_gpu.pth?dl=1"
-render_model_gpu: "https://www.dropbox.com/s/e4p7ixklgj4rc19/point_rend_model_gpu.pth?dl=1"
+base_model_gpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_base_gpu.pth?download=1"
+render_model_gpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_render_gpu.pth?download=1"
 
 class_names:
 - mito
