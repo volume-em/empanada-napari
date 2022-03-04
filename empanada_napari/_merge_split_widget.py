@@ -2,16 +2,15 @@ from napari_plugin_engine import napari_hook_implementation
 from qtpy.QtWidgets import QWidget, QHBoxLayout, QPushButton
 from magicgui import magic_factory, magicgui
 from empanada.array_utils import merge_boxes, crop_and_binarize
-from skimage.measure import regionprops 
+from skimage.measure import regionprops
 #from napari_tools_menu import register_function
 import napari
 import numpy as np
 import dask.array as da
 
 def delete_labels():
-
     @magicgui(
-        call_button='Run',
+        call_button='Delete labels',
         layout='vertical',
     )
 
@@ -19,13 +18,13 @@ def delete_labels():
         viewer: napari.viewer.Viewer,
         labels_layer: napari.layers.Labels,
         points_layer: napari.layers.Points,
-        
+
     ):
         if points_layer is None:
             points_layer = viewer.add_points([])
-            points_layer.mode = 'ADD' 
+            points_layer.mode = 'ADD'
             return
-        
+
         labels = labels_layer.data
         world_points = points_layer.data
 
@@ -54,9 +53,8 @@ def delete_labels():
     return widget
 
 def merge_labels():
-
     @magicgui(
-        call_button='Run',
+        call_button='Merge labels',
         layout='vertical',
     )
 
@@ -64,13 +62,13 @@ def merge_labels():
         viewer: napari.viewer.Viewer,
         labels_layer: napari.layers.Labels,
         points_layer: napari.layers.Points,
-        
+
     ):
         if points_layer is None:
             points_layer = viewer.add_points([])
-            points_layer.mode = 'ADD' 
+            points_layer.mode = 'ADD'
             return
-        
+
         labels = labels_layer.data
         world_points = points_layer.data
 
@@ -102,7 +100,7 @@ def merge_labels():
 
 def split_function():
     @magicgui(
-        call_button='Run',
+        call_button='Split labels',
         layout='vertical',
     )
 
@@ -151,7 +149,7 @@ def split_function():
 
         #distance = ndi.distance_transform_edt(binary)
         #coords = peak_local_max(distance, footprint=np.ones((3, 3)), labels=binary)
-        
+
         def translate_point_in_box(point, shed_box):
             n = len(shed_box)
             n_dim = n//2
@@ -166,8 +164,8 @@ def split_function():
             for i in range(n_dim):
                 slices.append(slice(shed_box[i], shed_box[i+n_dim]))
 
-            return tuple(slices) 
-        
+            return tuple(slices)
+
         mask = np.zeros(binary.shape, dtype=bool)
         for i in local_points:
             mask[translate_point_in_box(i, shed_box)] = True
@@ -182,7 +180,7 @@ def split_function():
 
         slices = box_to_slice(shed_box)
 
-        
+
         if type(labels) == da.core.Array:
             #new_labels[binary] += labels.max()
             max_label = 0
@@ -199,9 +197,8 @@ def split_function():
     return widget
 
 def split_widget_distance():
-
     @magicgui(
-        call_button='Run',
+        call_button='Split labels by distance watershed',
         layout='vertical',
         min_distance=dict(widget_type='Slider', label='Minimum Distance', min=1, max=100, value=10, tooltip='Min Distance between Markers'),
     )
@@ -266,14 +263,14 @@ def split_widget_distance():
         distance = ndi.distance_transform_edt(binary)
 
         if np.squeeze(distance).ndim == distance.ndim - 1:
-            coords = peak_local_max(np.squeeze(distance), min_distance=min_distance)    
+            coords = peak_local_max(np.squeeze(distance), min_distance=min_distance)
             mask = np.zeros(np.squeeze(distance).shape, dtype=bool)
-            mask[tuple(coords.T)] = True    
+            mask[tuple(coords.T)] = True
             mask = mask[None]
         else:
             coords = peak_local_max(distance, min_distance=min_distance)
             mask = np.zeros(distance.shape, dtype=bool)
-            mask[tuple(coords.T)] = True    
+            mask[tuple(coords.T)] = True
 
         markers, _ = ndi.label(mask)
 
@@ -291,15 +288,15 @@ def split_widget_distance():
             labels[slices][binary] = new_labels[binary] + labels.max()
 
         labels_layer.data = labels
-        points_layer.data = []     
+        points_layer.data = []
 
-        print('Done')  
+        print('Done')
 
     return widget
 
 def jump_to_label():
     @magicgui(
-        call_button='Run',
+        call_button='Jump to label',
         layout='vertical',
         label_id=dict(widget_type='LineEdit', label='Label ID', value='1', tooltip='Label to jump to'),
     )
@@ -365,4 +362,3 @@ def split_labels_widget():
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def delete_labels_widget():
     return delete_labels, {'name': 'Delete Labels'}
-

@@ -28,6 +28,9 @@ from napari.qt.threading import thread_worker
 
 from empanada_napari.utils import Preprocessor
 
+MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada/configs')
+torch.hub.set_dir(MODEL_DIR)
+
 #----------------------------------------------------------
 # Utilities for all gathering outputs from each GPU process
 #----------------------------------------------------------

@@ -24,6 +24,9 @@ from napari.qt.threading import thread_worker
 
 from empanada_napari.utils import Preprocessor
 
+MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada/configs')
+torch.hub.set_dir(MODEL_DIR)
+
 def instance_relabel(tracker):
     r"""Relabels instances starting from 1"""
     instance_id = 1
