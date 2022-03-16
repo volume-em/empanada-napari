@@ -1,6 +1,6 @@
 # Empanada-Napari
 
-**Documentation for the plugin, including more detailed installation instructions, can be found (here)[empanada.readthedocs.io/en/latest/empanada-napari.html](empanada.readthedocs.io/en/latest/empanada-napari.html).**
+**Documentation for the plugin, including more detailed installation instructions, can be found [here](https://empanada.readthedocs.io/en/latest/empanada-napari.html).**
 
 [empanada](https://github.com/volume-em/empanada) is a tool for deep learning-based panoptic segmentation of 2D and 3D electron microscopy images of cells.
 This plugin allows the running of panoptic segmentation models trained in empanada within [napari](https://napari.org).
@@ -18,7 +18,7 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 ## Installation
 
-It's recommended to have installed napari through (conda)[https://docs.conda.io/en/latest/miniconda.html].
+It's recommended to have installed napari through [conda](https://docs.conda.io/en/latest/miniconda.html).
 Then to install this plugin:
 
 ```shell
