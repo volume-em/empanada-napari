@@ -1,4 +1,4 @@
-# Empanada-Napari
+# empanada-napari
 
 **Documentation for the plugin, including more detailed installation instructions, can be found [here](https://empanada.readthedocs.io/en/latest/empanada-napari.html).**
 
