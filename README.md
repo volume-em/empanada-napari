@@ -11,6 +11,11 @@ raise an [issue here instead](https://github.com/napari/napari/issues).
 
   - *MitoNet*: A generalist mitochondrial instance segmentation model.
 
+## Example Datasets
+
+Volume EM datasets for benchmarking mitochondrial instance segmentation are available from
+[EMPIAR-10982](https://www.ebi.ac.uk/empiar/EMPIAR-10982/).
+
 ## Installation
 
 It's recommended to have installed napari through (conda)[https://docs.conda.io/en/latest/miniconda.html].
@@ -30,8 +35,35 @@ Look for empanada-napari under the "Plugins" menu.
 
 ![empanada](images/demo.gif)
 
+## GPU Support
 
-## Example Datasets
+**Note: Mac doesn't support NVIDIA GPUS. This section only applies to Windows and Linux systems.**
 
-Volume EM datasets for benchmarking mitochondrial instance segmentation are available from
-[EMPIAR-10982](https://www.ebi.ac.uk/empiar/EMPIAR-10982/).
+As for any deep learning models, having a GPU installed on your system will significantly
+increase model throughput (although we ship CPU optimized versions of all models with the plugin).
+
+This plugin relies on torch for running models. If a GPU was found on your system, then you will see that the
+"Use GPU" checkbox is checked by default in the "2D Inference" and "3D Inference" plugin widgets. Or if when running
+inference you see a message that says "Using CPU" in the terminal that means a GPU is not being used.
+
+Make sure that GPU drivers are correctly installed. In terminal or command prompt:
+
+```shell
+nvidia-smi
+```
+
+If this returns "command not found" then you need to [install the driver from NVIDIA](https://www.nvidia.com/download/index.aspx). Instead, if
+if the driver is installed correctly, you may need to switch to the GPU enabled version of torch.
+
+First, uninstall the current version of torch:
+
+```shell
+pip uninstall torch
+```
+
+Then [install torch >= 1.10 using conda for your system](https://pytorch.org/get-started/locally/).
+This command should work:
+
+```shell
+conda install pytorch cudatoolkit=11.3 -c pytorch
+```
