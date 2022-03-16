@@ -33,7 +33,7 @@ napari
 
 Look for empanada-napari under the "Plugins" menu.
 
-![empanada](https://empanada.readthedocs.io/en/latest/_images/demo.gif)
+![empanada](images/demo.gif)
 
 ## GPU Support
 
