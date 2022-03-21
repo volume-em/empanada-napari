@@ -376,8 +376,6 @@ class MultiGPUEngine3d:
         nms_threshold=0.1,
         nms_kernel=3,
         confidence_thr=0.3,
-        merge_iou_thr=0.25,
-        merge_ioa_thr=0.25,
         force_connected=True,
         min_size=500,
         min_extent=4,
@@ -419,8 +417,8 @@ class MultiGPUEngine3d:
         self.config['matcher_params'] = {}
 
         self.config['matcher_params']['label_divisor'] = label_divisor
-        self.config['matcher_params']['merge_iou_thr'] = merge_iou_thr
-        self.config['matcher_params']['merge_ioa_thr'] = merge_ioa_thr
+        self.config['matcher_params']['merge_iou_thr'] = 0.25
+        self.config['matcher_params']['merge_ioa_thr'] = 0.25
         self.config['force_connected'] = force_connected
 
         self.config['world_size'] = torch.cuda.device_count()

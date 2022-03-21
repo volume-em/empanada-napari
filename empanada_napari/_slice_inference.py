@@ -11,7 +11,8 @@ from napari import Viewer
 from napari.layers import Image, Shapes
 from magicgui import magicgui
 
-from magicgui.tqdm import tqdm
+#from magicgui.tqdm import tqdm
+from tqdm import tqdm
 
 import zarr
 import dask.array as da
@@ -31,7 +32,7 @@ def test_widget():
     model_configs = get_configs()
 
     @thread_worker
-    def test_model(
+    def run_model(
         engine,
         image,
         axis,
@@ -42,6 +43,37 @@ def test_widget():
         seg = engine.infer(image)
         print(f'Inference time:', time() - start)
         return seg, axis, plane
+
+    @thread_worker
+    def run_model_batch(
+        engine,
+        image
+    ):
+        # axis is always xy
+        axis = 0
+
+        # create the inference engine
+        if image.ndim == 3:
+            print(f'Running batch mode inference on {len(image)} images.')
+            for plane, img_slice in tqdm(enumerate(image), total=len(image)):
+                if type(img_slice) == da.core.Array:
+                    img_slice = img_slice.compute()
+
+                seg = engine.infer(img_slice)
+                yield seg, axis, plane
+
+        elif image.ndim == 2:
+            start = time()
+            if type(image) == da.core.Array:
+                image = image.compute()
+
+            plane = 0
+            seg = engine.infer(image)
+            print(f'Inference time:', time() - start)
+            yield seg, axis, plane
+
+        return
+
 
     logo = abspath(__file__, 'resources/empanada_logo.png')
 
@@ -54,6 +86,7 @@ def test_widget():
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         semantic_only=dict(widget_type='CheckBox', text='Semantic only', value=False, tooltip='Only run semantic segmentation for all classes.'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class'),
+        batch_mode=dict(widget_type='CheckBox', text='Batch mode', value=False, tooltip='If checked, each image in a stack is segmented independently.'),
     )
 
     gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0')
@@ -76,6 +109,7 @@ def test_widget():
         fine_boundaries,
         semantic_only,
         maximum_objects_per_class,
+        batch_mode,
         use_gpu
     ):
         # load the model config
@@ -147,16 +181,21 @@ def test_widget():
             else:
                 translate = [0, 0]
 
-            viewer.add_labels(seg, name=f'Test Seg', visible=True, translate=tuple(translate))
+            viewer.add_labels(seg, name=f'empanada_seg_2d', visible=True, translate=tuple(translate))
 
         # load data for currently viewer slice of chosen image layer
-        image2d, axis, plane = _get_current_slice(image_layer)
-        if type(image2d) == da.core.Array:
-            image2d = image2d.compute()
+        if not batch_mode:
+            image2d, axis, plane = _get_current_slice(image_layer)
+            if type(image2d) == da.core.Array:
+                image2d = image2d.compute()
 
-        test_worker = test_model(widget.engine, image2d, axis, plane)
-        test_worker.returned.connect(_show_test_result)
-        test_worker.start()
+            test_worker = run_model(widget.engine, image2d, axis, plane)
+            test_worker.returned.connect(_show_test_result)
+            test_worker.start()
+        else:
+            test_worker = run_model_batch(widget.engine, image_layer.data)
+            test_worker.yielded.connect(_show_test_result)
+            test_worker.start()
 
     return widget
 
