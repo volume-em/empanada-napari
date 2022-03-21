@@ -12,7 +12,7 @@ from empanada.data import VolumeDataset
 from empanada.data.utils import resize_by_factor
 
 from empanada.inference import filters
-from empanada.inference.engines import PanopticDeepLabRenderEngine3d
+from empanada.inference.engines import PanopticDeepLabRenderEngine3d, BCEngine3d
 from empanada.inference.tracker import InstanceTracker
 from empanada.inference.matcher import RLEMatcher
 from empanada.array_utils import put
@@ -346,8 +346,6 @@ class Engine3d:
         nms_threshold=0.1,
         nms_kernel=3,
         confidence_thr=0.3,
-        merge_iou_thr=0.25,
-        merge_ioa_thr=0.25,
         force_connected=True,
         min_size=500,
         min_extent=4,
@@ -412,8 +410,8 @@ class Engine3d:
         self.preprocessor = Preprocessor(**norms)
 
         self.axes = {'xy': 0, 'xz': 1, 'yz': 2}
-        self.merge_iou_thr = merge_iou_thr
-        self.merge_ioa_thr = merge_ioa_thr
+        self.merge_iou_thr = 0.25
+        self.merge_ioa_thr = 0.25
         self.force_connected = force_connected
         self.min_size = min_size
         self.min_extent = min_extent
@@ -447,8 +445,6 @@ class Engine3d:
         nms_threshold,
         nms_kernel,
         confidence_thr,
-        merge_iou_thr,
-        merge_ioa_thr,
         min_size,
         min_extent,
         fine_boundaries,
@@ -457,8 +453,6 @@ class Engine3d:
         save_panoptic
     ):
         self.label_divisor = label_divisor
-        self.merge_iou_thr = merge_iou_thr
-        self.merge_ioa_thr = merge_ioa_thr
         self.inference_scale = inference_scale
         self.min_size = min_size
         self.min_extent = min_extent
