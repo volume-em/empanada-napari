@@ -1,7 +1,8 @@
 # empanada-napari
 
+**The preprint describing this work is now available [on bioRxiv](https://www.biorxiv.org/content/10.1101/2022.03.17.484806v1).**
+
 **Documentation for the plugin, including more detailed installation instructions, can be found [here](https://empanada.readthedocs.io/en/latest/empanada-napari.html).**
-**The preprint descris now available [on bioRxiv](https://www.biorxiv.org/content/10.1101/2022.03.17.484806v1).**
 
 [empanada](https://github.com/volume-em/empanada) is a tool for deep learning-based panoptic segmentation of 2D and 3D electron microscopy images of cells.
 This plugin allows the running of panoptic segmentation models trained in empanada within [napari](https://napari.org).
