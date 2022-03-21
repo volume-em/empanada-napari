@@ -1,9 +1,7 @@
-from napari_plugin_engine import napari_hook_implementation
 from qtpy.QtWidgets import QWidget, QHBoxLayout, QPushButton
 from magicgui import magic_factory, magicgui
 from empanada.array_utils import merge_boxes, crop_and_binarize
 from skimage.measure import regionprops
-#from napari_tools_menu import register_function
 import napari
 import numpy as np
 import dask.array as da
@@ -343,22 +341,17 @@ def jump_to_label():
 
     return widget
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def split_by_dist():
     return split_widget_distance, {'name': 'Split by Distance'}
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def jump_to_label_widget():
     return jump_to_label, {'name': 'Jump to Label'}
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def merge_labels_widget():
     return merge_labels, {'name': 'Merge Labels'}
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def split_labels_widget():
     return split_function, {'name': 'Split Labels'}
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def delete_labels_widget():
     return delete_labels, {'name': 'Delete Labels'}
