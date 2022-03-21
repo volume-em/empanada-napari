@@ -2,6 +2,7 @@ import sys
 import yaml
 import os
 from typing import Any
+from napari_plugin_engine import napari_hook_implementation
 
 import numpy as np
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QPlainTextEdit
@@ -199,5 +200,6 @@ def test_widget():
 
     return widget
 
+@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def slice_dock_widget():
     return test_widget, {'name': '2D Inference (Parameter Testing)'}
