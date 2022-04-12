@@ -132,8 +132,7 @@ def volume_inference_widget():
         if not hasattr(widget, 'using_gpu'):
             widget.using_gpu = use_gpu
 
-        # conditions where model needs to be (re)loaded
-        if multigpu and (not hasattr(widget, 'engine')  or widget.last_config != model_config):
+        if multigpu:
             widget.engine = MultiGPUEngine3d(
                 model_config,
                 inference_scale=downsampling,
@@ -150,6 +149,7 @@ def volume_inference_widget():
                 store_url=store_url
             )
             widget.last_config = model_config
+        # conditions where model needs to be (re)loaded
         elif not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
             widget.engine = Engine3d(
                 model_config,
@@ -257,7 +257,7 @@ def volume_inference_widget():
         worker.start()
 
     return widget
-    
+
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def volume_dock_widget():
     return volume_inference_widget, {'name': '3D Inference'}

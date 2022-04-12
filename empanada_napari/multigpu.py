@@ -217,6 +217,7 @@ def run_forward_matchers(
         rle_seg = pan_seg_to_rle_seg(
             pan_seg, config['labels'],
             config['engine_params']['label_divisor'],
+            config['engine_params']['thing_list'],
             config['force_connected']
         )
 
@@ -240,6 +241,7 @@ def run_forward_matchers(
             rle_seg = pan_seg_to_rle_seg(
                 pan_seg, config['labels'],
                 config['engine_params']['label_divisor'],
+                config['engine_params']['thing_list'],
                 config['force_connected']
             )
 
@@ -261,9 +263,12 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     rank = gpu
     axis = config['axes'][axis_name]
 
+    print('In main worker')
+
     dist.init_process_group(backend='nccl', init_method='tcp://localhost:10001',
                             world_size=config['world_size'], rank=rank)
 
+    print('Created process group')
 
     # load models and set engine class from file or url
     if os.path.isfile(config[f'base_model_gpu']):
@@ -275,6 +280,8 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         render_model = torch.jit.load(config[f'render_model_gpu'])
     else:
         render_model = torch.hub.load_state_dict_from_url(config[f'render_model_gpu'])
+
+    print('Loaded models')
 
     engine_cls = MultiScaleInferenceEngine
     torch.cuda.set_device(config['gpu'])
@@ -291,6 +298,8 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         drop_last=False, num_workers=0, sampler=sampler
     )
 
+    print('Created dataloader')
+
     # if in main process, create matchers and process
     if rank == 0:
         thing_list = config['engine_params']['thing_list']
@@ -306,6 +315,8 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
             args=(config, matchers, queue, rle_stack, matcher_in)
         )
         matcher_proc.start()
+
+        print('Started matcher on process 0')
 
     # create the inference engine
     inference_engine = engine_cls(base_model, render_model, **config['engine_params'], device=f'cuda:{gpu}')
@@ -327,6 +338,8 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
             output['ctr_hmp'], output['offsets'], upsampling
         )
 
+        print('Got instance cells')
+
         # correctly resize the sem and instance_cells
         coarse_sem_logits = output['sem_logits']
         sem_logits = coarse_sem_logits.clone()
@@ -336,9 +349,13 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
             features, upsampling * 4
         )
 
+        print('Upsampled logits')
+
         # get median semantic seg
         sems = all_gather(sem)
         instance_cells = all_gather(instance_cells)
+
+        print('All gathered')
 
         # drop last segs if unnecessary
         n += len(sems)
@@ -347,6 +364,8 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         # move both sem and instance_cells to cpu
         sems = [sem.cpu() for sem in sems[:stop]]
         instance_cells = [cells.cpu() for cells in instance_cells[:stop]]
+
+        print('Moved to cpu')
 
         if rank == 0:
             # run the matching process
@@ -360,6 +379,8 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         queue.put(('finish', 'finish'))
         rle_stack = matcher_out.recv()[0]
         matcher_proc.join()
+
+        print('Finalized matcher')
 
         # send the rle stack back to the main process
         rle_out.put([rle_stack])
