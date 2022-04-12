@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from empanada.data import VolumeDataset
 from empanada.inference import filters
-from empanada.inference.engines import PanopticDeepLabMultiGPU
+from empanada.inference.engines import PanopticDeepLabMultiGPURender
 from empanada.inference.tracker import InstanceTracker
 from empanada.inference.matcher import RLEMatcher
 from empanada.inference.postprocess import factor_pad, merge_semantic_and_instance
@@ -283,7 +283,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
 
     print('Loaded models')
 
-    engine_cls = PanopticDeepLabMultiGPU
+    engine_cls = PanopticDeepLabMultiGPURender
     torch.cuda.set_device(config['gpu'])
 
     preprocessor = Preprocessor(**config['norms'])
@@ -291,7 +291,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     # create the dataloader
     shape = volume.shape
     upsampling = config['inference_scale']
-    dataset = VolumeDataset(volume, axis, preprocessor, scale=1)
+    dataset = VolumeDataset(volume, axis, preprocessor, scale=upsampling)
     sampler = DistributedSampler(dataset, shuffle=False)
     dataloader = DataLoader(
         dataset, batch_size=1, shuffle=False, pin_memory=True,
@@ -319,12 +319,17 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         print('Started matcher on process 0')
 
     # create the inference engine
-    inference_engine = engine_cls(base_model, render_model, **config['engine_params'], device=f'cuda:{gpu}')
+    render_models = {'sem_logits': render_model}
+    inference_engine = engine_cls(base_model, render_models, **config['engine_params'], device=f'cuda:{gpu}')
+
     print('Created engine')
 
     inference_engine.base_model = DDP(inference_engine.base_model, device_ids=[config['gpu']])
-    inference_engine.render_model = DDP(inference_engine.render_model, device_ids=[config['gpu']])
-    print('Moved to DDP', inference_engine.device)
+    print('Moved base to DDP', inference_engine.device)
+
+    for k in inference_engine.render_models.keys():
+        inference_engine.render_models[k] = DDP(inference_engine.render_models[k], device_ids=[config['gpu']])
+        print('Moved render model to DDP', inference_engine.device)
 
     n = 0
     iterator = dataloader if rank != 0 else tqdm(dataloader, total=len(dataloader))
@@ -336,12 +341,20 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         image = factor_pad(image, config['padding_factor'])
 
         output = inference_engine.infer(image)
-        sem = output['sem']
         instance_cells = inference_engine.get_instance_cells(
-            output['ctr_hmp'], output['offsets']
+            output['ctr_hmp'], output['offsets'], upsampling
         )
 
-        print('Got instance cells')
+        # correctly resize the sem and instance_cells
+        coarse_sem_logits = output['sem_logits']
+        sem_logits = coarse_sem_logits.clone()
+        features = output['semantic_x']
+        sem, _ = inference_engine.upsample_logits(
+            sem_logits, coarse_sem_logits,
+            features, upsampling * 4
+        )
+
+        print('Upsampled logits')
 
         # get median semantic seg
         sems = all_gather(sem)
