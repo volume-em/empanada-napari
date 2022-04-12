@@ -283,7 +283,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
 
     print('Loaded models')
 
-    engine_cls = MultiScaleInferenceEngine
+    engine_cls = PanopticDeepLabMultiGPU
     torch.cuda.set_device(config['gpu'])
 
     preprocessor = Preprocessor(**config['norms'])
