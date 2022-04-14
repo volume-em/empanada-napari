@@ -134,7 +134,8 @@ def tracker_consensus(
     allow_one_view=False,
     min_size=200,
     min_extent=4,
-    dtype=np.uint64
+    dtype=np.uint64,
+    chunk_size=(96, 96, 96)
 ):
     r"""Calculate the orthoplane consensus from trackers. Yields a numpy
     or zarr volume along with the name of the class that is segmented.
@@ -175,7 +176,7 @@ def tracker_consensus(
         if zarr_store is not None:
             consensus_vol = zarr_store.create_dataset(
                 f'{class_name}_pred', shape=shape3d, dtype=dtype,
-                overwrite=True, chunks=(1, None, None)
+                overwrite=True, chunks=chunk_size
             )
             zarr_fill_instances(consensus_vol, consensus_tracker.instances)
         else:

@@ -1,8 +1,5 @@
 import os
 import zarr
-import yaml
-import pickle
-import functools
 import numpy as np
 from collections import deque
 
@@ -16,7 +13,7 @@ from tqdm import tqdm
 
 from empanada.data import VolumeDataset
 from empanada.inference import filters
-from empanada.inference.engines import PanopticDeepLabMultiGPURender
+from empanada.inference.engines import PanopticDeepLabRenderEngine
 from empanada.inference.tracker import InstanceTracker
 from empanada.inference.matcher import RLEMatcher
 from empanada.inference.postprocess import factor_pad, merge_semantic_and_instance
@@ -35,16 +32,6 @@ torch.hub.set_dir(MODEL_DIR)
 # Utilities for all gathering outputs from each GPU process
 #----------------------------------------------------------
 
-@functools.lru_cache()
-def _get_global_gloo_group():
-    r"""Return a process group based on gloo backend, containing all the ranks
-    The result is cached.
-    """
-    if dist.get_backend() == "nccl":
-        return dist.new_group(backend="gloo")
-    else:
-        return dist.group.WORLD
-
 def get_world_size() -> int:
     if not dist.is_available():
         return 1
@@ -52,58 +39,19 @@ def get_world_size() -> int:
         return 1
     return dist.get_world_size()
 
-def _serialize_to_tensor(data, group):
-    backend = dist.get_backend(group)
-    assert backend in ["gloo", "nccl"]
-    device = torch.device("cpu" if backend == "gloo" else "cuda")
 
-    buffer = pickle.dumps(data)
-    if len(buffer) > 1024 ** 3:
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            "Rank {} trying to all-gather {:.2f} GB of data on device {}".format(
-                get_rank(), len(buffer) / (1024 ** 3), device
-            )
-        )
-    storage = torch.ByteStorage.from_buffer(buffer)
-    tensor = torch.ByteTensor(storage).to(device=device)
-    return tensor
-
-def all_gather(data, group=None):
-    r"""Run all_gather on arbitrary picklable data (not necessarily tensors).
-    Args:
-        data: any picklable object
-        group: a torch process group. By default, will use a group which
-            contains all ranks on gloo backend.
-    Returns:
-        list[data]: list of data gathered from each rank
-    """
-    if get_world_size() == 1:
-        return [data]
-    if group is None:
-        group = _get_global_gloo_group()
-    if dist.get_world_size(group) == 1:
-        return [data]
-
-    tensor = _serialize_to_tensor(data, group)
-
+def all_gather(tensor, group=None):
     # all tensors are same size
     world_size = dist.get_world_size()
-    max_size = torch.tensor([tensor.numel()], dtype=torch.int64, device=tensor.device)
 
     # receiving Tensor from all ranks
     tensor_list = [
-        torch.empty((max_size,), dtype=torch.uint8, device=tensor.device) for _ in range(world_size)
+        torch.zeros_like(tensor) for _ in range(world_size)
     ]
 
     dist.all_gather(tensor_list, tensor, group=group)
 
-    data_list = []
-    for tensor in tensor_list:
-        buffer = tensor.cpu().numpy().tobytes()
-        data_list.append(pickle.loads(buffer))
-
-    return data_list
+    return tensor_list
 
 #----------------------------------------------------------
 # Process/worker functions
@@ -213,7 +161,7 @@ def run_forward_matchers(
             continue
 
         # convert pan seg to rle
-        pan_seg = pan_seg.squeeze().numpy()
+        pan_seg = pan_seg.squeeze().cpu().numpy()
         rle_seg = pan_seg_to_rle_seg(
             pan_seg, config['labels'],
             config['engine_params']['label_divisor'],
@@ -237,7 +185,7 @@ def run_forward_matchers(
             sem = harden_seg(sem, confidence_thr)
             pan_seg = get_panoptic_seg(sem, cells, config)
 
-            pan_seg = pan_seg.squeeze().numpy()
+            pan_seg = pan_seg.squeeze().cpu().numpy()
             rle_seg = pan_seg_to_rle_seg(
                 pan_seg, config['labels'],
                 config['engine_params']['label_divisor'],
@@ -263,12 +211,8 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     rank = gpu
     axis = config['axes'][axis_name]
 
-    print('In main worker')
-
     dist.init_process_group(backend='nccl', init_method='tcp://localhost:10001',
                             world_size=config['world_size'], rank=rank)
-
-    print('Created process group')
 
     # load models and set engine class from file or url
     if os.path.isfile(config[f'base_model_gpu']):
@@ -281,9 +225,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     else:
         render_model = torch.hub.load_state_dict_from_url(config[f'render_model_gpu'])
 
-    print('Loaded models')
-
-    engine_cls = PanopticDeepLabMultiGPURender
+    engine_cls = PanopticDeepLabRenderEngine
     torch.cuda.set_device(config['gpu'])
 
     preprocessor = Preprocessor(**config['norms'])
@@ -297,8 +239,6 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         dataset, batch_size=1, shuffle=False, pin_memory=True,
         drop_last=False, num_workers=0, sampler=sampler
     )
-
-    print('Created dataloader')
 
     # if in main process, create matchers and process
     if rank == 0:
@@ -316,27 +256,18 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         )
         matcher_proc.start()
 
-        print('Started matcher on process 0')
-
     # create the inference engine
+    base_model = base_model.to(f'cuda:{gpu}')
+    render_model = render_model.to(f'cuda:{gpu}')
     render_models = {'sem_logits': render_model}
-    inference_engine = engine_cls(base_model, render_models, **config['engine_params'], device=f'cuda:{gpu}')
-
-    print('Created engine')
-
-    inference_engine.base_model = DDP(inference_engine.base_model, device_ids=[config['gpu']])
-    print('Moved base to DDP', inference_engine.device)
-
-    for k in inference_engine.render_models.keys():
-        inference_engine.render_models[k] = DDP(inference_engine.render_models[k], device_ids=[config['gpu']])
-        print('Moved render model to DDP', inference_engine.device)
+    inference_engine = engine_cls(base_model, render_models, **config['engine_params'])
 
     n = 0
     iterator = dataloader if rank != 0 else tqdm(dataloader, total=len(dataloader))
     step = get_world_size()
     total_len = shape[axis]
     for batch in iterator:
-        image = batch['image']
+        image = batch['image'].to(f'cuda:{gpu}', non_blocking=True)
         h, w = batch['size']
         image = factor_pad(image, config['padding_factor'])
 
@@ -354,30 +285,26 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
             features, upsampling * 4
         )
 
-        print('Upsampled logits')
-
         # get median semantic seg
         sems = all_gather(sem)
         instance_cells = all_gather(instance_cells)
-
-        print('All gathered')
 
         # drop last segs if unnecessary
         n += len(sems)
         stop = min(step, (total_len - n) + step)
 
-        # move both sem and instance_cells to cpu
-        sems = [sem.cpu() for sem in sems[:stop]]
-        instance_cells = [cells.cpu() for cells in instance_cells[:stop]]
-
-        print('Moved to cpu')
+        # clip off extras
+        sems = sems[:stop]
+        instance_cells = instance_cells[:stop]
 
         if rank == 0:
             # run the matching process
             for sem, cells in zip(sems, instance_cells):
                 queue.put(
-                    (sem[..., :h, :w], cells[..., :h, :w])
+                    (sem.cpu()[..., :h, :w], cells.cpu()[..., :h, :w])
                 )
+
+        del sems, instance_cells
 
     # pass None to queue to mark the end of inference
     if rank == 0:
@@ -385,7 +312,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         rle_stack = matcher_out.recv()[0]
         matcher_proc.join()
 
-        print('Finalized matcher')
+        print('Finished matcher')
 
         # send the rle stack back to the main process
         rle_out.put([rle_stack])
@@ -518,7 +445,6 @@ class MultiGPUEngine3d:
             args=(volume, axis_name, rle_stack, rle_out, self.config),
             join=False
         )
-
 
         # grab the zarr stack that was filled in
         rle_stack = rle_out.get()[0]

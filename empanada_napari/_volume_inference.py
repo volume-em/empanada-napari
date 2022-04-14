@@ -32,10 +32,10 @@ def volume_inference_widget():
     model_configs = get_configs()
 
     @thread_worker
-    def stack_inference(engine, volume):
-        stack, trackers = engine.infer_on_axis(volume, 'xy')
-        trackers_dict = {'xy': trackers}
-        return stack, trackers_dict
+    def stack_inference(engine, volume, axis_name):
+        stack, trackers = engine.infer_on_axis(volume, axis_name)
+        trackers_dict = {axis_name: trackers}
+        return stack, axis_name, trackers_dict
 
     @thread_worker
     def orthoplane_inference(engine, volume):
@@ -74,7 +74,8 @@ def volume_inference_widget():
         median_slices=dict(widget_type='ComboBox', choices=[1, 3, 5, 7, 9, 11], value=3, label='Median Filter Size', tooltip='Median filter size'),
         min_size=dict(widget_type='SpinBox', value=500, min=0, max=1e6, step=100, label='Min Size (Voxels)'),
         min_extent=dict(widget_type='SpinBox', value=5, min=0, max=1000, step=1, label='Min Box Extent'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class in 3D'),
+        maximum_objects_per_class=dict(widget_type='LineEdit', value='1000000', label='Max objects per class in 3D'),
+        inference_plane=dict(widget_type='ComboBox', choices=['xy', 'xz', 'yz'], value='xy', label='Inference plane', tooltip='Image plane along which to run inference. Overwritten, if using ortho-plane.'),
 
         parameters_ortho_head=dict(widget_type='Label', label=f'<h3 text-align="center">Ortho-plane Parameters (Optional)</h3>'),
         orthoplane=dict(widget_type='CheckBox', text='Run ortho-plane', value=False, tooltip='Whether to run orthoplane inference'),
@@ -104,6 +105,7 @@ def volume_inference_widget():
         min_size,
         min_extent,
         maximum_objects_per_class,
+        inference_plane,
 
         parameters_ortho_head,
         orthoplane,
@@ -196,9 +198,11 @@ def volume_inference_widget():
 
         def _new_segmentation(*args):
             mask = args[0][0]
+            axis_name = args[0][1]
+
             if mask is not None:
                 try:
-                    _new_layers(mask, f'panoptic-stack')
+                    _new_layers(mask, f'panoptic-stack-{axis_name}')
 
                     for layer in viewer.layers:
                         layer.visible = False
@@ -223,7 +227,7 @@ def volume_inference_widget():
                 print(e)
 
         def start_postprocess_worker(*args):
-            trackers_dict = args[0][1]
+            trackers_dict = args[0][2]
             postprocess_worker = stack_postprocessing(
                 trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
                 min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
@@ -250,7 +254,7 @@ def volume_inference_widget():
             worker.yielded.connect(_new_segmentation)
             worker.returned.connect(start_consensus_worker)
         else:
-            worker = stack_inference(widget.engine, image)
+            worker = stack_inference(widget.engine, image,)
             worker.returned.connect(_new_segmentation)
             worker.returned.connect(start_postprocess_worker)
 
