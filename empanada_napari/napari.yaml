@@ -14,9 +14,12 @@ contributions:
   - id: empanada-napari.delete_labels
     title: Create Delete Labels
     python_name: empanada_napari._merge_split_widget:delete_labels
-  - id: empanada-napari.split_function
+  - id: empanada-napari.split_labels
     title: Create Split Labels
-    python_name: empanada_napari._merge_split_widget:split_function
+    python_name: empanada_napari._merge_split_widget:split_labels
+  - id: empanada-napari.jump_to_label
+    title: Jump to label
+    python_name: empanada_napari._merge_split_widget:jump_to_label
   - id: empanada-napari.register_model_widget
     title: Create Register new model
     python_name: empanada_napari._register_model:register_model_widget
@@ -30,7 +33,9 @@ contributions:
     display_name: Merge Labels
   - command: empanada-napari.delete_labels
     display_name: Delete Labels
-  - command: empanada-napari.split_function
+  - command: empanada-napari.split_labels
     display_name: Split Labels
+  - command: empanada-napari.jump_to_label
+    display_name: Jump to label
   - command: empanada-napari.register_model_widget
     display_name: Register new model
