@@ -254,7 +254,7 @@ def volume_inference_widget():
             worker.yielded.connect(_new_segmentation)
             worker.returned.connect(start_consensus_worker)
         else:
-            worker = stack_inference(widget.engine, image,)
+            worker = stack_inference(widget.engine, image, inference_plane)
             worker.returned.connect(_new_segmentation)
             worker.returned.connect(start_postprocess_worker)
 
