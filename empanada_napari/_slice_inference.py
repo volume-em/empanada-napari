@@ -93,7 +93,7 @@ def test_widget():
     gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0')
 
     @magicgui(
-        label_head= dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
+        label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 2D Inference',
         layout='vertical',
         **gui_params
