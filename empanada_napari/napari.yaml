@@ -23,6 +23,9 @@ contributions:
   - id: empanada-napari.pick_patches
     title: Pick training patches
     python_name: empanada_napari._pick_patches:pick_patches
+  - id: empanada-napari.store_dataset
+    title: Save training dataset
+    python_name: empanada_napari._pick_patches:store_dataset
   - id: empanada-napari.register_model_widget
     title: Create Register new model
     python_name: empanada_napari._register_model:register_model_widget
@@ -41,6 +44,8 @@ contributions:
   - command: empanada-napari.jump_to_label
     display_name: Jump to label
   - command: empanada-napari.pick_patches
-    display_name: Pick patches widget
+    display_name: Pick training patches
+  - command: empanada-napari.store_dataset
+    display_name: Store training dataset
   - command: empanada-napari.register_model_widget
     display_name: Register new model

@@ -1,4 +1,6 @@
+import os
 import napari
+import string
 import random
 import numpy as np
 import dask.array as da
@@ -68,8 +70,8 @@ def pick_patches():
         return np.stack(flipbooks, axis=0), locs
 
     gui_params = dict(
-        num_patches=dict(widget_type='SpinBox', value=16, min=1, max=512, step=1, label='Number of patches for annotation'),
-        patch_size=dict(widget_type='SpinBox', value=224, min=128, max=512, step=16, label='Number of patches for annotation'),
+        num_patches=dict(widget_type='SpinBox', value=8, min=1, max=64, step=1, label='Number of patches for annotation'),
+        patch_size=dict(widget_type='SpinBox', value=224, min=128, max=512, step=16, label='Patch size in pixels'),
         filter_pct=dict(widget_type='FloatSpinBox', value=0.9, min=0.0, max=1., step=0.1, label='Percent of uninformative patches to filter out'),
         isotropic=dict(widget_type='CheckBox', text='Take xy,xz,yz', value=False, tooltip='If volume has isotropic voxels, pick patches from all planes.'),
     )
@@ -89,11 +91,18 @@ def pick_patches():
     ):
 
         volume = image_layer.data
+        name = image_layer.name
         assert volume.ndim == 3, "Must be 3D data!"
 
         def _show_flipbooks(*args):
             flipbooks, locs = args[0]
-            viewer.add_image(flipbooks, name=f'flipbooks', visible=True)
+
+            metadata = {
+                'prefix': f'{name}',
+                'suffices': [f'-LOC-{l[0]}_{l[1]}-{l[2]}_{l[3]}-{l[4]}_{l[5]}-{l[6]}' for l in locs]
+            }
+
+            viewer.add_image(flipbooks, name=f'{name}_flipbooks', metadata=metadata, visible=True)
 
         crop_worker = _random_crops(volume, patch_size, num_patches, isotropic)
         crop_worker.returned.connect(_show_flipbooks)
@@ -101,6 +110,101 @@ def pick_patches():
 
     return widget
 
+def store_dataset():
+    from skimage import io
+
+    def _random_suffix(size=10):
+        # printing letters
+        letters = string.ascii_letters
+        digits = string.digits
+
+        pstr = []
+        for _ in range(size):
+            if random.random() < 0.5:
+                pstr.append(random.choice(letters))
+            else:
+                pstr.append(random.choice(digits))
+
+        return ''.join(pstr)
+
+    gui_params = dict(
+        save_dir=dict(widget_type='FileEdit', value='./', label='Save directory', mode='d', tooltip='Directory in which to create a new dataset.'),
+        dataset_name=dict(widget_type='LineEdit', value='', label='Dataset name', tooltip='Name to use for the dataset, creates a directory in the Save Directory with this name')
+    )
+
+    @magicgui(
+        call_button='Save flipbooks',
+        layout='vertical',
+        **gui_params
+    )
+    def widget(
+        viewer: napari.viewer.Viewer,
+        image_layer: napari.layers.Image,
+        labels_layer: napari.layers.Labels,
+        save_dir,
+        dataset_name
+    ):
+
+        assert dataset_name, "Must provide a dataset name!"
+
+        flipbooks = image_layer.data
+        flipbook_labels = labels_layer.data
+        assert flipbooks.ndim == 4, "Flipbooks are expected to be 4D. Did you pick the right image layer?"
+        assert flipbook_labels.ndim == 4, "Labels are expected to be 4D. Did you pick the right labels layer?"
+        assert flipbooks.shape[1] == 5, "Flipbooks must be 5 slices long!"
+
+        # labels can span entire image space,
+        # crop them to only span the given flipbook space
+        if not np.allclose(flipbooks.shape, flipbook_labels.shape):
+            assert all([sfl >= sf for sfl,sf in zip(flipbook_labels.shape, flipbooks.shape)])
+            a,b,c,d = flipbooks.shape
+            flipbook_labels = flipbook_labels[:a, :b, :c, :d]
+            print(f'Cropped labels to match flipbook image size.')
+
+        if image_layer.metadata:
+            has_metadata = True
+            prefix = image_layer.metadata['prefix']
+            suffices = image_layer.metadata['suffices']
+        else:
+            has_metadata = False
+            prefix = 'unknown'
+            suffices = ['-' + _random_suffix() for _ in range(len(flipbooks))]
+
+        # get middle images of flipbooks
+        images = flipbooks[:, 2]
+        masks = flipbook_labels[:, 2]
+
+        outdir = os.path.join(save_dir, dataset_name)
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir, exist_ok=True)
+            os.makedirs(os.path.join(outdir, f'{prefix}/images'), exist_ok=True)
+            os.makedirs(os.path.join(outdir, f'{prefix}/masks'), exist_ok=True)
+            print('Created directory', outdir)
+
+        for sfx,img,msk in zip(suffices, images, masks):
+            fname = f'{prefix}{sfx}.tiff'
+
+            # if we have metadata, use it to crop image and mask
+            if has_metadata:
+                hrange, wrange = sfx.split('_')[-2:]
+                hmin, hmax = hrange.split('-')
+                wmin, wmax = wrange.split('-')
+                h, w = int(hmax) - int(hmin), int(wmax) - int(wmin)
+
+                img = img[:h, :w]
+                msk = msk[:h, :w]
+
+            io.imsave(os.path.join(outdir, f'{prefix}/images/{fname}'), img, check_contrast=False)
+            io.imsave(os.path.join(outdir, f'{prefix}/masks/{fname}'), msk, check_contrast=False)
+
+        print('Finished saving.')
+
+    return widget
+
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def pick_patches_widget():
     return pick_patches, {'name': 'Pick training patches'}
+
+@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+def store_dataset_widget():
+    return store_dataset, {'name': 'Store training dataset'}
