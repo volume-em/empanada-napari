@@ -12,16 +12,14 @@ from empanada.data import VolumeDataset
 from empanada.data.utils import resize_by_factor
 
 from empanada.inference import filters
-from empanada.inference.engines import PanopticDeepLabRenderEngine3d, BCEngine3d
+from empanada.inference.engines import (
+    PanopticDeepLabRenderEngine, PanopticDeepLabRenderEngine3d
+)
 from empanada.inference.tracker import InstanceTracker
-from empanada.inference.matcher import RLEMatcher
 from empanada.array_utils import put
-from empanada.inference.rle import pan_seg_to_rle_seg, rle_seg_to_pan_seg
-from empanada.zarr_utils import *
-from empanada.consensus import merge_objects_from_trackers
+from empanada.inference.patterns import *
 
 from napari.qt.threading import thread_worker
-
 from empanada_napari.utils import Preprocessor
 
 MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada/configs')
@@ -51,20 +49,6 @@ def instance_relabel(tracker):
 
     return instances
 
-def numpy_fill_instances(volume, instances):
-    r"""Helper function to fill numpy volume with run length encoded instances"""
-    shape = volume.shape
-    volume = volume.reshape(-1)
-    for instance_id, instance_attrs in instances.items():
-        starts = instance_attrs['starts']
-        ends = starts + instance_attrs['runs']
-
-        # fill ranges with instance id
-        for s,e in zip(starts, ends):
-            volume[s:e] = instance_id
-
-    return volume.reshape(shape)
-
 @thread_worker
 def stack_postprocessing(
     trackers,
@@ -73,7 +57,7 @@ def stack_postprocessing(
     label_divisor=1000,
     min_size=200,
     min_extent=4,
-    dtype=np.uint64,
+    dtype=np.uint32,
     chunk_size=(96, 96, 96)
 ):
     r"""Relabels and filters each class defined in trackers. Yields a numpy
@@ -88,16 +72,9 @@ def stack_postprocessing(
 
     # create the final instance segmentations
     for class_id, class_name in zip(labels, class_names):
-        # get the relevant trackers for the class_label
         print(f'Creating stack segmentation for class {class_name}...')
 
-        class_tracker = None
-        for axis_name, axis_trackers in trackers.items():
-            for tracker in axis_trackers:
-                if tracker.class_id == class_id:
-                    class_tracker = tracker
-                    break
-
+        class_tracker = get_axis_trackers_by_class(trackers, class_id)[0]
         shape3d = class_tracker.shape3d
 
         # merge instances from orthoplane inference
@@ -116,10 +93,10 @@ def stack_postprocessing(
                 f'{class_name}_pred', shape=shape3d, dtype=dtype,
                 overwrite=True, chunks=chunk_size
             )
-            zarr_fill_instances(stack_vol, stack_tracker.instances)
         else:
             stack_vol = np.zeros(shape3d, dtype=dtype)
-            stack_vol = numpy_fill_instances(stack_vol, stack_tracker.instances)
+
+        fill_volume(stack_vol, stack_tracker.instances)
 
         yield stack_vol, class_name
 
@@ -134,13 +111,14 @@ def tracker_consensus(
     allow_one_view=False,
     min_size=200,
     min_extent=4,
-    dtype=np.uint64,
+    dtype=np.uint32,
     chunk_size=(96, 96, 96)
 ):
     r"""Calculate the orthoplane consensus from trackers. Yields a numpy
     or zarr volume along with the name of the class that is segmented.
     """
     labels = model_config['labels']
+    thing_list = model_config['thing_list']
     class_names = model_config['class_names']
     if store_url is not None:
         zarr_store = zarr.open(store_url)
@@ -152,23 +130,18 @@ def tracker_consensus(
         # get the relevant trackers for the class_label
         print(f'Creating consensus segmentation for class {class_name}...')
 
-        class_trackers = []
-        for axis_name, axis_trackers in trackers.items():
-            for tracker in axis_trackers:
-                if tracker.class_id == class_id:
-                    class_trackers.append(tracker)
-
+        class_trackers = get_axis_trackers_by_class(trackers, class_id)
         shape3d = class_trackers[0].shape3d
 
-        # merge instances from orthoplane inference
-        consensus_tracker = InstanceTracker(class_id, label_divisor, shape3d, 'xy')
-        consensus_tracker.instances = merge_objects_from_trackers(
-            class_trackers, pixel_vote_thr, cluster_iou_thr, bypass=allow_one_view
-        )
-
-        # inplace apply filters to final merged segmentation
-        filters.remove_small_objects(consensus_tracker, min_size=min_size)
-        filters.remove_pancakes(consensus_tracker, min_span=min_extent)
+        # consensus from orthoplane
+        if class_id in thing_list:
+            consensus_tracker = create_instance_consensus(
+                class_trackers, pixel_vote_thr, cluster_iou_thr, allow_one_view
+            )
+            filters.remove_small_objects(consensus_tracker, min_size=min_size)
+            filters.remove_pancakes(consensus_tracker, min_span=min_extent)
+        else:
+            consensus_tracker = create_semantic_consensus(class_trackers, args.pixel_vote_thr)
 
         print(f'Total {class_name} objects {len(consensus_tracker.instances.keys())}')
 
@@ -178,10 +151,10 @@ def tracker_consensus(
                 f'{class_name}_pred', shape=shape3d, dtype=dtype,
                 overwrite=True, chunks=chunk_size
             )
-            zarr_fill_instances(consensus_vol, consensus_tracker.instances)
         else:
             consensus_vol = np.zeros(shape3d, dtype=dtype)
-            consensus_vol = numpy_fill_instances(consensus_vol, consensus_tracker.instances)
+
+        fill_volume(consensus_vol, consensus_tracker.instances)
 
         yield consensus_vol, class_name
 
@@ -239,10 +212,9 @@ class Engine2d:
 
         # create the inference engine
         render_models = {'sem_logits': render_model}
-        self.engine = PanopticDeepLabRenderEngine3d(
+        self.engine = PanopticDeepLabRenderEngine(
             base_model, render_models,
             thing_list=thing_list,
-            median_kernel_size=1, # no median filter in 2d
             label_divisor=label_divisor,
             nms_threshold=nms_threshold,
             nms_kernel=nms_kernel,
@@ -299,40 +271,6 @@ class Engine2d:
         # engine handles upsampling and padding
         pan_seg = self.engine(image, size, upsampling=self.inference_scale)
         return pan_seg.squeeze().cpu().numpy()
-
-def run_forward_matchers(
-    matchers,
-    queue,
-    rle_stack,
-    matcher_in,
-    end_signal='finish'
-):
-    r"""Run forward matching of instances between slices in a separate process
-    on CPU while model is performing inference on GPU.
-    """
-    # go until queue gets the kill signal
-    while True:
-        rle_seg = queue.get()
-
-        if rle_seg is None:
-            # building the median filter queue
-            continue
-        elif rle_seg == end_signal:
-            # all images have been matched!
-            break
-        else:
-            # match the rle seg for each class
-            for matcher in matchers:
-                class_id = matcher.class_id
-                if matcher.target_rle is None:
-                    matcher.initialize_target(rle_seg[class_id])
-                else:
-                    rle_seg[class_id] = matcher(rle_seg[class_id])
-
-            rle_stack.append(rle_seg)
-
-    matcher_in.send([rle_stack])
-    matcher_in.close()
 
 class Engine3d:
     r"""Engine for 3D ortho-plane and stack inference"""
@@ -485,13 +423,6 @@ class Engine3d:
 
         self.set_dtype()
 
-    def create_matchers(self):
-        matchers = [
-            RLEMatcher(thing_class, self.label_divisor, self.merge_iou_thr, self.merge_ioa_thr)
-            for thing_class in self.thing_list
-        ]
-        return matchers
-
     def create_trackers(self, shape3d, axis_name):
         trackers = [
             InstanceTracker(label, self.label_divisor, shape3d, axis_name)
@@ -529,14 +460,21 @@ class Engine3d:
 
         # create necessary matchers and trackers
         trackers = self.create_trackers(volume.shape, axis_name)
-        matchers = self.create_matchers()
+        matchers = create_matchers(
+            self.thing_list, self.label_divisor,
+            self.merge_iou_thr, self.merge_ioa_thr
+        )
         stack = self.create_panoptic_stack(axis_name, volume.shape)
 
         # setup matcher for multiprocessing
         queue = mp.Queue()
         rle_stack = []
         matcher_out, matcher_in = mp.Pipe()
-        matcher_proc = mp.Process(target=run_forward_matchers, args=(matchers, queue, rle_stack, matcher_in))
+        matcher_args = (
+            matchers, queue, rle_stack, matcher_in,
+            self.labels, self.label_divisor, self.thing_list
+        )
+        matcher_proc = mp.Process(target=forward_matching, args=matcher_args)
         matcher_proc.start()
 
         print(f'Predicting {axis_name}...')
@@ -550,60 +488,27 @@ class Engine3d:
                 queue.put(None)
                 continue
             else:
-                pan_seg = pan_seg.squeeze().cpu().numpy() # remove padding and unit dimensions
-
-                # convert to a compressed rle segmentation
-                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.thing_list, self.force_connected)
-                queue.put(rle_seg)
+                pan_seg = pan_seg.squeeze().cpu().numpy()
+                queue.put(pan_seg)
 
         final_segs = self.engine.end()
         if final_segs:
             for i, pan_seg in enumerate(final_segs):
-                pan_seg = pan_seg.squeeze().cpu().numpy() # remove padding
-
-                # convert to a compressed rle segmentation
-                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.thing_list, self.force_connected)
-                queue.put(rle_seg)
+                pan_seg = pan_seg.squeeze().cpu().numpy()
+                queue.put(pan_seg)
 
         # finish and close forward matching process
         queue.put('finish')
         rle_stack = matcher_out.recv()[0]
         matcher_proc.join()
 
-        print(f'Propagating labels backward...')
-        # set the matchers to not assign new labels
-        for matcher in matchers:
-            matcher.target_rle = None
-            matcher.assign_new = False
+        print(f'Propagating labels backward through the stack...')
+        axis_len = volume.shape[axis]
+        for index,rle_seg in tqdm(backward_matching(rle_stack, matchers, axis_len), total=axis_len):
+            update_trackers(rle_seg, index, trackers, axis, stack)
 
-        rev_indices = np.arange(0, volume.shape[axis])[::-1]
-        for rev_idx in tqdm(rev_indices):
-            rev_idx = rev_idx.item()
-            rle_seg = rle_stack[rev_idx]
-
-            for matcher in matchers:
-                class_id = matcher.class_id
-                if matcher.target_rle is None:
-                    matcher.initialize_target(rle_seg[class_id])
-                else:
-                    rle_seg[class_id] = matcher(rle_seg[class_id])
-
-            # store the panoptic seg if desired
-            if self.save_panoptic:
-                shape2d = tuple([s for i,s in enumerate(volume.shape) if i != axis])
-                pan_seg = rle_seg_to_pan_seg(rle_seg, shape2d)
-                put(stack, rev_idx, pan_seg, axis)
-
-            # track each instance for each class
-            for tracker in trackers:
-                class_id = tracker.class_id
-                tracker.update(rle_seg[class_id], rev_idx)
-
-        # finish tracking
+        finish_tracking(trackers)
         for tracker in trackers:
-            tracker.finish()
-
-            # apply filters
             filters.remove_small_objects(tracker, min_size=self.min_size)
             filters.remove_pancakes(tracker, min_span=self.min_extent)
 
