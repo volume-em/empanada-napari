@@ -1,7 +1,6 @@
 import os
 import zarr
 import numpy as np
-from collections import deque
 
 import torch
 import torch.distributed as dist
@@ -13,13 +12,10 @@ from tqdm import tqdm
 
 from empanada.data import VolumeDataset
 from empanada.inference import filters
-from empanada.inference.engines import PanopticDeepLabRenderEngine
+from empanada.inference.engines import PanopticDeepLabRenderEngine3d
 from empanada.inference.tracker import InstanceTracker
-from empanada.inference.matcher import RLEMatcher
-from empanada.inference.postprocess import factor_pad, merge_semantic_and_instance
-from empanada.array_utils import put
-from empanada.inference.rle import pan_seg_to_rle_seg, rle_seg_to_pan_seg
-from empanada.zarr_utils import *
+from empanada.inference.postprocess import factor_pad
+from empanada.inference.patterns import *
 
 from napari.qt.threading import thread_worker
 
@@ -27,184 +23,6 @@ from empanada_napari.utils import Preprocessor
 
 MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada/configs')
 torch.hub.set_dir(MODEL_DIR)
-
-#----------------------------------------------------------
-# Utilities for all gathering outputs from each GPU process
-#----------------------------------------------------------
-
-def get_world_size() -> int:
-    if not dist.is_available():
-        return 1
-    if not dist.is_initialized():
-        return 1
-    return dist.get_world_size()
-
-
-def all_gather(tensor, group=None):
-    # all tensors are same size
-    world_size = dist.get_world_size()
-
-    # receiving Tensor from all ranks
-    tensor_list = [
-        torch.zeros_like(tensor) for _ in range(world_size)
-    ]
-
-    dist.all_gather(tensor_list, tensor, group=group)
-
-    return tensor_list
-
-#----------------------------------------------------------
-# Process/worker functions
-#----------------------------------------------------------
-
-class MedianQueue:
-    def __init__(self, qlen=3):
-        self.sem_queue = deque(maxlen=qlen)
-        self.cell_queue = deque(maxlen=qlen)
-
-        self.qlen = qlen
-        self.mid_idx = (qlen - 1) // 2
-
-    def append(self, sem, cells):
-        self.sem_queue.append(sem)
-        self.cell_queue.append(cells)
-
-    def get_median_sem(self):
-        median_sem = torch.median(
-            torch.cat(list(self.sem_queue), dim=0), dim=0, keepdim=True
-        ).values
-        return median_sem
-
-    def get_next(self):
-        nq = len(self.sem_queue)
-        if nq <= self.mid_idx:
-            # take last item in the queue
-            sem = self.sem_queue[-1]
-            cells = self.cell_queue[-1]
-        elif nq > self.mid_idx and nq < self.qlen:
-            # nothing to return while queue builds
-            return None, None
-        else:
-            # nq == median_kernel_size
-            # use the middle item in the queue
-            # with the median segmentation probs
-            sem = self.get_median_sem()
-            cells = self.cell_queue[self.mid_idx]
-
-        return sem, cells
-
-    def __iter__(self):
-        for sem,cells in zip(self.sem_queue, self.cell_queue):
-            yield (sem, cells)
-
-def harden_seg(sem, confidence_thr):
-    if sem.size(1) > 1: # multiclass segmentation
-        sem = torch.argmax(sem, dim=1, keepdim=True)
-    else:
-        sem = (sem >= confidence_thr).long() # need integers not bool
-
-    return sem
-
-def get_panoptic_seg(sem, instance_cells, config):
-    label_divisor = config['engine_params']['label_divisor']
-    thing_list = config['engine_params']['thing_list']
-    stuff_area = config['engine_params']['stuff_area']
-    void_label = config['engine_params']['void_label']
-
-    # keep only label for instance classes
-    instance_seg = torch.zeros_like(sem)
-    for thing_class in thing_list:
-        instance_seg[sem == thing_class] = 1
-
-    # map object ids
-    instance_seg = (instance_seg * instance_cells).long()
-
-    pan_seg = merge_semantic_and_instance(
-        sem, instance_seg, label_divisor, thing_list,
-        stuff_area, void_label
-    )
-
-    return pan_seg
-
-def run_forward_matchers(
-    config,
-    matchers,
-    queue,
-    rle_stack,
-    matcher_in,
-    end_signal='finish',
-):
-    r"""Run forward matching of instances between slices in a separate process
-    on CPU while model is performing inference on GPU.
-    """
-    # create the queue for sem and instance cells
-    confidence_thr = config['engine_params']['confidence_thr']
-    median_kernel_size = config['engine_params']['median_kernel_size']
-    median_queue = MedianQueue(median_kernel_size)
-
-    while True:
-        sem, cells = queue.get()
-        if sem == end_signal:
-            # all images have been matched!
-            break
-
-        # update the queue
-        median_queue.append(sem, cells)
-        median_sem, cells = median_queue.get_next()
-
-        # get segmentation if not None
-        if median_sem is not None:
-            median_sem = harden_seg(median_sem, confidence_thr)
-            pan_seg = get_panoptic_seg(median_sem, cells, config)
-        else:
-            pan_seg = None
-            continue
-
-        # convert pan seg to rle
-        pan_seg = pan_seg.squeeze().cpu().numpy()
-        rle_seg = pan_seg_to_rle_seg(
-            pan_seg, config['labels'],
-            config['engine_params']['label_divisor'],
-            config['engine_params']['thing_list'],
-            config['force_connected']
-        )
-
-        # match the rle seg for each class
-        for matcher in matchers:
-            class_id = matcher.class_id
-            if matcher.target_rle is None:
-                matcher.initialize_target(rle_seg[class_id])
-            else:
-                rle_seg[class_id] = matcher(rle_seg[class_id])
-
-        rle_stack.append(rle_seg)
-
-    # get the final segmentations from the queue
-    for i, (sem,cells) in enumerate(median_queue):
-        if i >= median_queue.mid_idx + 1:
-            sem = harden_seg(sem, confidence_thr)
-            pan_seg = get_panoptic_seg(sem, cells, config)
-
-            pan_seg = pan_seg.squeeze().cpu().numpy()
-            rle_seg = pan_seg_to_rle_seg(
-                pan_seg, config['labels'],
-                config['engine_params']['label_divisor'],
-                config['engine_params']['thing_list'],
-                config['force_connected']
-            )
-
-            # match the rle seg for each class
-            for matcher in matchers:
-                class_id = matcher.class_id
-                if matcher.target_rle is None:
-                    matcher.initialize_target(rle_seg[class_id])
-                else:
-                    rle_seg[class_id] = matcher(rle_seg[class_id])
-
-            rle_stack.append(rle_seg)
-
-    matcher_in.send([rle_stack])
-    matcher_in.close()
 
 def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     config['gpu'] = gpu
@@ -225,7 +43,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     else:
         render_model = torch.hub.load_state_dict_from_url(config[f'render_model_gpu'])
 
-    engine_cls = PanopticDeepLabRenderEngine
+    engine_cls = PanopticDeepLabRenderEngine3d
     torch.cuda.set_device(config['gpu'])
 
     preprocessor = Preprocessor(**config['norms'])
@@ -243,16 +61,21 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     # if in main process, create matchers and process
     if rank == 0:
         thing_list = config['engine_params']['thing_list']
-        matchers = [
-            RLEMatcher(thing_class, **config['matcher_params'])
-            for thing_class in thing_list
-        ]
+        matchers = create_matchers(thing_list, **config['matcher_params'])
 
         queue = mp.Queue()
         matcher_out, matcher_in = mp.Pipe()
+        matcher_args = (
+            matchers, queue, rle_stack, matcher_in,
+            config['engine_params']['confidence_thr'],
+            config['engine_params']['median_kernel_size'],
+            config['engine_params']['labels'],
+            config['engine_params']['label_divisor'],
+            thing_list
+        )
         matcher_proc = mp.Process(
-            target=run_forward_matchers,
-            args=(config, matchers, queue, rle_stack, matcher_in)
+            target=forward_multigpu,
+            args=matcher_args
         )
         matcher_proc.start()
 
@@ -264,7 +87,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
 
     n = 0
     iterator = dataloader if rank != 0 else tqdm(dataloader, total=len(dataloader))
-    step = get_world_size()
+    step = dist.get_world_size()
     total_len = shape[axis]
     for batch in iterator:
         image = batch['image'].to(f'cuda:{gpu}', non_blocking=True)
@@ -356,6 +179,7 @@ class MultiGPUEngine3d:
             self.config['engine_params']['thing_list'] = self.config['thing_list']
 
         self.config['inference_scale'] = inference_scale
+        self.config['engine_params']['labels'] = self.labels
         self.config['engine_params']['label_divisor'] = label_divisor
         self.config['engine_params']['median_kernel_size'] = median_kernel_size
         self.config['engine_params']['stuff_area'] = stuff_area
@@ -398,13 +222,6 @@ class MultiGPUEngine3d:
             self.dtype = np.uint32
         else:
             self.dtype = np.uint64
-
-    def create_matchers(self):
-        matchers = [
-            RLEMatcher(thing_class, **self.config['matcher_params'])
-            for thing_class in self.config['thing_list']
-        ]
-        return matchers
 
     def create_trackers(self, shape3d, axis_name):
         label_divisor = self.config['engine_params']['label_divisor']
@@ -453,42 +270,16 @@ class MultiGPUEngine3d:
         # run backward matching and tracking
         print('Propagating labels backward...')
         axis = self.config['axes'][axis_name]
-        matchers = self.create_matchers()
+        matchers = create_matchers(self.config['thing_list'], **self.config['matcher_params'])
         trackers = self.create_trackers(volume.shape, axis_name)
         stack = self.create_panoptic_stack(axis_name, volume.shape)
 
-        # no new labels in backward pass
-        for matcher in matchers:
-            matcher.assign_new = False
+        axis_len = volume.shape[axis]
+        for index,rle_seg in tqdm(backward_matching(rle_stack, matchers, axis_len), total=axis_len):
+            update_trackers(rle_seg, index, trackers, axis, stack)
 
-        rev_indices = np.arange(0, volume.shape[axis])[::-1]
-        for rev_idx in tqdm(rev_indices):
-            rev_idx = rev_idx.item()
-            rle_seg = rle_stack[rev_idx]
-
-            for matcher in matchers:
-                class_id = matcher.class_id
-                if matcher.target_rle is None:
-                    matcher.initialize_target(rle_seg[class_id])
-                else:
-                    rle_seg[class_id] = matcher(rle_seg[class_id])
-
-            # store the panoptic seg if desired
-            if stack is not None:
-                shape2d = tuple([s for i,s in enumerate(volume.shape) if i != axis])
-                pan_seg = rle_seg_to_pan_seg(rle_seg, shape2d)
-                put(stack, rev_idx, pan_seg, axis)
-
-            # track each instance for each class
-            for tracker in trackers:
-                class_id = tracker.class_id
-                tracker.update(rle_seg[class_id], rev_idx)
-
-        # finish tracking
+        finish_tracking(trackers)
         for tracker in trackers:
-            tracker.finish()
-
-            # apply filters
             filters.remove_small_objects(tracker, min_size=self.min_size)
             filters.remove_pancakes(tracker, min_span=self.min_extent)
 
