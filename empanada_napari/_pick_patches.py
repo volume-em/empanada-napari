@@ -72,7 +72,6 @@ def pick_patches():
     gui_params = dict(
         num_patches=dict(widget_type='SpinBox', value=8, min=1, max=64, step=1, label='Number of patches for annotation'),
         patch_size=dict(widget_type='SpinBox', value=224, min=128, max=512, step=16, label='Patch size in pixels'),
-        filter_pct=dict(widget_type='FloatSpinBox', value=0.9, min=0.0, max=1., step=0.1, label='Percent of uninformative patches to filter out'),
         isotropic=dict(widget_type='CheckBox', text='Take xy,xz,yz', value=False, tooltip='If volume has isotropic voxels, pick patches from all planes.'),
     )
 
@@ -86,7 +85,6 @@ def pick_patches():
         image_layer: napari.layers.Image,
         num_patches,
         patch_size,
-        filter_pct,
         isotropic
     ):
 
