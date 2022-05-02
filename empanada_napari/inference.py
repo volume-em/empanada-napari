@@ -1,4 +1,4 @@
-import os
+import os, platform
 import zarr
 import yaml
 import numpy as np
@@ -465,6 +465,12 @@ class Engine3d:
             self.merge_iou_thr, self.merge_ioa_thr
         )
         stack = self.create_panoptic_stack(axis_name, volume.shape)
+
+        if platform.system() == "Darwin":
+            try:
+                mp.set_start_method('spawn')
+            except RuntimeError:
+                pass
 
         # setup matcher for multiprocessing
         queue = mp.Queue()
