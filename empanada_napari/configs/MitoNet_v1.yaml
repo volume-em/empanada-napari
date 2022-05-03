@@ -4,6 +4,8 @@ render_model_cpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_render_cpu
 base_model_gpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_base_gpu.pth?download=1"
 render_model_gpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_render_gpu.pth?download=1"
 
+weights: "https://zenodo.org/record/6512226/files/MitoNet_v1.pth.tar?download=1"
+
 class_names:
 - mito
 

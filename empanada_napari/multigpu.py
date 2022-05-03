@@ -25,7 +25,7 @@ from napari.qt.threading import thread_worker
 
 from empanada_napari.utils import Preprocessor
 
-MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada/configs')
+MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
 torch.hub.set_dir(MODEL_DIR)
 
 #----------------------------------------------------------

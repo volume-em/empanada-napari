@@ -26,6 +26,9 @@ contributions:
   - id: empanada-napari.store_dataset
     title: Save training dataset
     python_name: empanada_napari._pick_patches:store_dataset
+  - id: empanada-napari.finetuning_widget
+    title: Finetune a model
+    python_name: empanada_napari._finetune:finetuning_widget
   - id: empanada-napari.register_model_widget
     title: Create Register new model
     python_name: empanada_napari._register_model:register_model_widget
@@ -47,5 +50,7 @@ contributions:
     display_name: Pick training patches
   - command: empanada-napari.store_dataset
     display_name: Store training dataset
+  - command: empanada-napari.finetuning_widget
+    display_name: Finetune a model
   - command: empanada-napari.register_model_widget
     display_name: Register new model
