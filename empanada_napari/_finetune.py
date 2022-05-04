@@ -71,9 +71,9 @@ def finetuning_widget():
         elif n_imgs < 16:
             raise Exception(f'Need 16 images for finetuning, got {n_imgs}')
         else:
-            epochs = (iterations // n_imgs) + 1
+            epochs = int(iterations // (n_imgs / 16)) + 1
 
-        print(f'Found {n_imgs} for model finetuning.')
+        print(f'Found {n_imgs} for model finetuning. Training for {epochs} epochs.')
 
         # load the model config
         train_config = load_config(main_config)

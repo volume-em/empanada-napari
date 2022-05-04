@@ -56,7 +56,7 @@ def main_worker(config):
         print('Using CPU for finetuning, this may be slow.')
 
     # setup the model and pick dataset class
-    model = torch.jit.load(config['TRAIN']['whole_pretraining'])
+    model = torch.hub.load_state_dict_from_url(config['TRAIN']['whole_pretraining'])
     dataset_class_name = config['TRAIN']['dataset_class']
     data_cls = data.__dict__[dataset_class_name]
     norms = config['DATASET']['norms']
