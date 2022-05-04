@@ -20,7 +20,7 @@ def finetuning_widget():
 
     from torch.cuda import device_count
 
-    main_config = abspath(__file__, 'single_instance_train_config.yaml')
+    main_config = abspath(__file__, 'finetune_config.yaml')
     logo = abspath(__file__, 'resources/empanada_logo.png')
 
     # get list of all available model configs
@@ -28,18 +28,19 @@ def finetuning_widget():
 
     @thread_worker
     def run_finetuning(config):
-        from empanada_napari import train
-        train.main(config)
+        from empanada_napari import finetune
+        finetune.main(config)
 
         outpath = os.path.join(config['TRAIN']['model_dir'], config['config_name'])
         print(f'Finished finetuning. Weights saved to {outpath}')
 
     gui_params = dict(
-        model_name=dict(widget_type='LineEdit', label='Model name, no spaces', value='new_model'),
-        train_dir=dict(widget_type='FileEdit', label='Train directory', mode='d', tooltip='location to store segmentations on disk'),
+        model_name=dict(widget_type='LineEdit', label='Model name, no spaces', value='FinetunedModel'),
+        train_dir=dict(widget_type='FileEdit', label='Train directory', mode='d', tooltip='location were annotated data is saved'),
         model_dir=dict(widget_type='FileEdit', label='Model directory', mode='d', tooltip='directory in which to save the model weights'),
         finetune_model=dict(widget_type='ComboBox', label='Model to finetune', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='model to use for finetuning'),
-        iterations=dict(widget_type='SpinBox', value=100, min=100, max=5000, step=100, label='number of iterations for finetuning')
+        finetune_layer=dict(widget_type='ComboBox', label='Finetunable layers', choices=['none', 'stage4', 'stage3', 'stage2', 'stage1', 'all'], value='none', tooltip='layers to finetune in the encoder'),
+        iterations=dict(widget_type='SpinBox', value=100, min=100, max=5000, step=100, label='Iterations', tooltip='number of iterations for finetuning')
     )
 
     @magicgui(
@@ -55,13 +56,13 @@ def finetuning_widget():
         train_dir,
         model_dir,
         finetune_model,
+        finetune_layer,
         iterations
     ):
         train_dir = str(train_dir)
         model_dir = str(model_dir)
 
         assert os.path.isdir(train_dir)
-        assert os.path.isdir(model_dir)
 
         # get number of images in train_dir
         n_imgs = len(glob(os.path.join(train_dir, '**/images/*')))
@@ -81,18 +82,19 @@ def finetuning_widget():
         train_config['config_name'] = model_name
 
         # set train_config params from model_config
-        train_config['DATASET']['dataset_name'] = f'{model_name} {finetune_model} finetuning'
         train_config['DATASET']['class_names'] = {
             k: v for k,v in zip(model_config['labels'], model_config['class_names'])
         }
-        train_config['DATASET']['labels'] = model_config['labels']
-        train_config['DATASET']['thing_list'] = model_config['thing_list']
         train_config['DATASET']['norms'] = model_config['norms']
 
         train_config['TRAIN']['train_dir'] = train_dir
         train_config['TRAIN']['model_dir'] = model_dir
-        train_config['TRAIN']['whole_pretraining'] = model_config['weights']
+        train_config['TRAIN']['whole_pretraining'] = model_config['model_definition']
+        train_config['TRAIN']['finetune_layer'] = finetune_layer
         train_config['TRAIN']['schedule_params']['epochs'] = epochs
+
+        data_cls = 'SingleClassInstanceDataset' if len(model_config['labels']) == 1 else 'PanopticDataset'
+        train_config['TRAIN']['dataset_class'] = data_cls
 
         worker = run_finetuning(train_config)
         worker.start()
