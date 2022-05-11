@@ -10,8 +10,6 @@ TRAIN:
   model_dir: "empanada_models"
   save_freq: 1
 
-  # pretraining parameters
-  whole_pretraining: null
   finetune_layer: null
 
   # set the lr schedule
@@ -27,15 +25,6 @@ TRAIN:
   optimizer: "AdamW"
   optimizer_params:
     weight_decay: 0.1
-
-  # criterion parameters
-  criterion: "PanopticLoss"
-  criterion_params:
-    ce_weight: 1
-    mse_weight: 200
-    l1_weight: 0.01
-    top_k_percent: 0.2
-    pr_weight: 1
 
   # performance metrics
   print_freq: 1

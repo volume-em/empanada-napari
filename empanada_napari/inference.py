@@ -12,7 +12,9 @@ from empanada.data import VolumeDataset
 from empanada.data.utils import resize_by_factor
 
 from empanada.inference import filters
-from empanada.inference.engines import PanopticDeepLabRenderEngine3d, BCEngine3d
+from empanada.inference.engines import (
+    PanopticDeepLabRenderEngine3d, PanopticDeepLabRenderEngine, BCEngine3d
+)
 from empanada.inference.tracker import InstanceTracker
 from empanada.inference.matcher import RLEMatcher
 from empanada.array_utils import put
@@ -22,7 +24,7 @@ from empanada.consensus import merge_objects_from_trackers
 
 from napari.qt.threading import thread_worker
 
-from empanada_napari.utils import Preprocessor
+from empanada_napari.utils import Preprocessor, load_model_to_device
 
 MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
 torch.hub.set_dir(MODEL_DIR)
@@ -43,6 +45,7 @@ def instance_relabel(tracker):
         # TODO: technically this could break the zarr_fill_instances function
         # if an object has a pixel in the bottom right corner of the Nth z slice
         # and a pixel in the top left corner of the N+1th z slice
+        # only applies to yz axis
         instances[instance_id] = {}
         instances[instance_id]['box'] = instance_attr['box']
         instances[instance_id]['starts'] = runs_cat[:, 0]
@@ -200,29 +203,9 @@ class Engine2d:
         use_gpu=True
     ):
         # check whether GPU is available
-        if torch.cuda.is_available() and use_gpu:
-            device = 'gpu'
-        else:
-            print('Testing on CPU')
-            device = 'cpu'
-
-        # load the base and render models from file or url
-        if os.path.isfile(model_config[f'base_model_{device}']):
-            print(f'base_model_{device}', model_config[f'base_model_{device}'])
-            base_model = torch.jit.load(model_config[f'base_model_{device}'])
-        else:
-            base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
-
-        if os.path.isfile(model_config[f'render_model_{device}']):
-            print(f'render_model_{device}', model_config[f'render_model_{device}'])
-            render_model = torch.jit.load(model_config[f'render_model_{device}'])
-        else:
-            render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
-
-        # move them to gpu if needed
-        if device == 'gpu':
-            base_model = base_model.cuda()
-            render_model = render_model.cuda()
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        model = load_model_to_device(model_config['model'], device)
+        model = model.to(device)
 
         self.thing_list = model_config['thing_list']
         self.labels = model_config['labels']
@@ -238,11 +221,8 @@ class Engine2d:
             thing_list = self.thing_list
 
         # create the inference engine
-        render_models = {'sem_logits': render_model}
-        self.engine = PanopticDeepLabRenderEngine3d(
-            base_model, render_models,
-            thing_list=thing_list,
-            median_kernel_size=1, # no median filter in 2d
+        self.engine = PanopticDeepLabRenderEngine(
+            model, thing_list=thing_list,
             label_divisor=label_divisor,
             nms_threshold=nms_threshold,
             nms_kernel=nms_kernel,
@@ -357,26 +337,9 @@ class Engine3d:
         save_panoptic=False
     ):
         # check whether GPU is available
-        if torch.cuda.is_available() and use_gpu:
-            device = 'gpu'
-        else:
-            device = 'cpu'
-
-        # load the base and render models from file or url
-        if os.path.isfile(model_config[f'base_model_{device}']):
-            base_model = torch.jit.load(model_config[f'base_model_{device}'])
-        else:
-            base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
-
-        if os.path.isfile(model_config[f'render_model_{device}']):
-            render_model = torch.jit.load(model_config[f'render_model_{device}'])
-        else:
-            render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
-
-        # move them to gpu if needed
-        if device == 'gpu':
-            base_model = base_model.cuda()
-            render_model = render_model.cuda()
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        model = load_model_to_device(model_config['model'], device)
+        model = model.to(device)
 
         self.model_config = model_config
         self.labels = model_config['labels']
@@ -392,10 +355,8 @@ class Engine3d:
             self.thing_list = model_config['thing_list']
 
         # create the inference engine
-        render_models = {'sem_logits': render_model}
         self.engine = PanopticDeepLabRenderEngine3d(
-            base_model, render_models,
-            thing_list=self.thing_list,
+            model, thing_list=self.thing_list,
             median_kernel_size=median_kernel_size,
             label_divisor=label_divisor,
             nms_threshold=nms_threshold,
@@ -536,7 +497,10 @@ class Engine3d:
         queue = mp.Queue()
         rle_stack = []
         matcher_out, matcher_in = mp.Pipe()
-        matcher_proc = mp.Process(target=run_forward_matchers, args=(matchers, queue, rle_stack, matcher_in))
+        matcher_proc = mp.Process(
+            target=run_forward_matchers,
+            args=(matchers, queue, rle_stack, matcher_in)
+        )
         matcher_proc.start()
 
         print(f'Predicting {axis_name}...')
@@ -553,16 +517,22 @@ class Engine3d:
                 pan_seg = pan_seg.squeeze().cpu().numpy() # remove padding and unit dimensions
 
                 # convert to a compressed rle segmentation
-                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.thing_list, self.force_connected)
+                rle_seg = pan_seg_to_rle_seg(
+                    pan_seg, self.labels, self.label_divisor,
+                    self.thing_list, self.force_connected
+                )
                 queue.put(rle_seg)
 
-        final_segs = self.engine.end()
+        final_segs = self.engine.end(self.inference_scale)
         if final_segs:
             for i, pan_seg in enumerate(final_segs):
                 pan_seg = pan_seg.squeeze().cpu().numpy() # remove padding
 
                 # convert to a compressed rle segmentation
-                rle_seg = pan_seg_to_rle_seg(pan_seg, self.labels, self.label_divisor, self.thing_list, self.force_connected)
+                rle_seg = pan_seg_to_rle_seg(
+                    pan_seg, self.labels, self.label_divisor,
+                    self.thing_list, self.force_connected
+                )
                 queue.put(rle_seg)
 
         # finish and close forward matching process

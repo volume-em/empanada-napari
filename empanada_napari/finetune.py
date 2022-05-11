@@ -15,6 +15,9 @@ from empanada import losses
 from empanada import data
 from empanada import metrics
 
+MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
+torch.hub.set_dir(MODEL_DIR)
+
 schedules = sorted(name for name in lr_scheduler.__dict__
     if callable(lr_scheduler.__dict__[name]) and not name.startswith('__')
     and name[0].isupper()
@@ -39,6 +42,15 @@ loss_names = sorted(name for name in losses.__dict__
 )
 
 def main(config):
+    # load the model config
+    model_config = load_config(config['MODEL']['config'])
+    config['FINETUNE'] = model_config['FINETUNE']
+    del model_config['FINETUNE']
+    config['MODEL'] = model_config
+
+    config['config_file'] = args.config
+    config['config_name'] = os.path.basename(args.config).split('.yaml')[0]
+
     # create model directory if None
     if not os.path.isdir(config['TRAIN']['model_dir']):
         os.mkdir(config['TRAIN']['model_dir'])
@@ -46,7 +58,8 @@ def main(config):
     # validate parameters
     assert config['TRAIN']['lr_schedule'] in schedules
     assert config['TRAIN']['optimizer'] in optimizers
-    assert config['TRAIN']['criterion'] in loss_names
+    assert config['FINETUNE']['criterion'] in loss_names
+    assert config['FINETUNE']['engine'] in engine_names
 
     main_worker(config)
 

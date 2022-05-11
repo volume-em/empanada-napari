@@ -12,6 +12,52 @@ from napari import Viewer
 from napari.layers import Image, Shapes
 from magicgui import magicgui
 
+def export_model(config, state_fpath, save_path):
+    import torch
+    MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
+    torch.hub.set_dir(MODEL_DIR)
+
+    # load the state_dict
+    state_dict = torch.load(state_fpath)['state_dict']
+    model = torch.hub.load_state_dict_from_url(config['model_definition'])
+
+    model.load_state_dict(state_dict, strict=True)
+    model.eval()
+
+    # split the model into base and render
+    # and script them
+    base_model = deepcopy(model)
+    render_model = model.semantic_pr
+
+    base_model = torch.jit.script(base_model)
+    render_model = torch.jit.script(render_model)
+
+    # save the model
+    model_name = config['model_name']
+    base_fpath = os.path.join(save_path, f'{model_name}_base.pth')
+    render_fpath = os.path.join(save_path, f'{model_name}_render.pth')
+
+    torch.jit.save(base_model, base_fpath)
+    torch.jit.save(render_model, render_fpath)
+
+    # update the config
+    config['base_model_cpu'] = base_fpath
+    config['base_model_gpu'] = base_fpath
+    config['render_model_cpu'] = render_fpath
+    config['render_model_gpu'] = render_fpath
+
+    # leave model definition alone for now
+    # assumes no finetuning of finetuned models
+
+    # save the config file in dir and to empanada path
+    with open(os.path.join(save_path, f'{model_name}.yaml'), mode='w') as f:
+        yaml.dump(config, f)
+
+    empanada_dir = os.path.join(os.path.expanduser('~'), '.empanada')
+    config_dir = os.path.join(empanada_dir, 'configs')
+    with open(os.path.join(config_dir, f'{model_name}.yaml'), mode='w') as f:
+        yaml.dump(config, f)
+
 def finetuning_widget():
     from glob import glob
     from napari.qt.threading import thread_worker
@@ -33,6 +79,8 @@ def finetuning_widget():
 
         outpath = os.path.join(config['TRAIN']['model_dir'], config['config_name'])
         print(f'Finished finetuning. Weights saved to {outpath}')
+
+        return
 
     gui_params = dict(
         model_name=dict(widget_type='LineEdit', label='Model name, no spaces', value='FinetunedModel'),
@@ -73,11 +121,13 @@ def finetuning_widget():
         else:
             epochs = int(iterations // (n_imgs / 16)) + 1
 
-        print(f'Found {n_imgs} for model finetuning. Training for {epochs} epochs.')
+        epochs = 1
+        print(f'Found {n_imgs} images for finetuning. Training for {epochs} epochs.')
 
         # load the model config
         train_config = load_config(main_config)
         model_config = load_config(model_configs[finetune_model])
+        model_config['model_name'] = model_name
 
         train_config['config_name'] = model_name
 
@@ -96,7 +146,12 @@ def finetuning_widget():
         data_cls = 'SingleClassInstanceDataset' if len(model_config['labels']) == 1 else 'PanopticDataset'
         train_config['TRAIN']['dataset_class'] = data_cls
 
+        def _run_export_and_register():
+            export_model(model_config, os.path.join(model_dir, f'{model_name}_checkpoint.pth.tar'), model_dir)
+            print(f'Exported model to {model_dir}')
+
         worker = run_finetuning(train_config)
+        worker.returned.connect(_run_export_and_register)
         worker.start()
 
     return widget
