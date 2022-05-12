@@ -16,7 +16,7 @@ from magicgui import magicgui
 def finetuning_widget():
     from glob import glob
     from napari.qt.threading import thread_worker
-    from empanada_napari.utils import abspath, get_configs
+    from empanada_napari.utils import abspath, get_configs, add_new_model
     from empanada.config_loaders import load_config
 
     from torch.cuda import device_count
@@ -32,10 +32,10 @@ def finetuning_widget():
         from empanada_napari import finetune
         finetune.main(config)
 
-        outpath = os.path.join(config['TRAIN']['model_dir'], config['model_name'] + '.pth')
-        print(f'Finished finetuning. Model saved to {outpath}')
+        outpath = os.path.join(config['TRAIN']['model_dir'], config['model_name'] + '.yaml')
+        print(f'Finished finetuning. Model config saved to {outpath}')
 
-        return
+        return outpath
 
     gui_params = dict(
         model_name=dict(widget_type='LineEdit', label='Model name, no spaces', value='FinetunedModel'),
@@ -67,7 +67,7 @@ def finetuning_widget():
         train_dir = str(train_dir)
         model_dir = str(model_dir)
 
-        if not eval_dir:
+        if str(eval_dir) == '.':
             eval_dir = None
 
         assert os.path.isdir(train_dir)
@@ -101,8 +101,11 @@ def finetuning_widget():
         config['TRAIN']['train_dir'] = train_dir
         config['TRAIN']['model_dir'] = model_dir
         config['TRAIN']['finetune_layer'] = finetune_layer
+        config['TRAIN']['save_freq'] = epochs
 
         config['EVAL']['eval_dir'] = eval_dir
+        # only run validation 5 times
+        config['EVAL']['epochs_per_eval'] = epochs // 5
 
         if 'epochs' in config['TRAIN']['schedule_params']:
             config['TRAIN']['schedule_params']['epochs'] = epochs
@@ -126,8 +129,8 @@ def finetuning_widget():
             else:
                 raise Exception('Unsupported metric', metric['metric'])
 
-        def _register_new_model():
-            pass
+        def _register_new_model(outpath):
+            add_new_model(model_name, outpath)
 
         worker = run_finetuning(config)
         worker.returned.connect(_register_new_model)

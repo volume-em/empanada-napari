@@ -5,7 +5,7 @@ TRAIN:
   additional_train_dirs: null
 
   model_dir: null
-  save_freq: 1
+  save_freq: null
 
   finetune_layer: null
 
@@ -43,7 +43,7 @@ TRAIN:
 
 EVAL:
   eval_dir: null
-  epochs_per_eval: 1
+  epochs_per_eval: null
 
   # parameters needed for eval_metrics
   metrics:
