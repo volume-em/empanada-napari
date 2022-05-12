@@ -4,6 +4,7 @@ import torch
 from pathlib import Path
 import urllib.request
 from urllib.parse import urlparse
+from empanada.config_loaders import read_yaml
 
 __all__ = [
     'abspath'
@@ -118,8 +119,8 @@ def add_new_model(
         # overwrite the model file
         config['model_quantized'] = model_quant_file
     elif config['model_quantized'] is not None:
-        assert valid_url_or_file(config['model_quantized']), \
-        f"{config['model_quantized']} not a valid file or url!"
+        if not valid_url_or_file(config['model_quantized']):
+            print(f"{config['model_quantized']} not a valid file or url, ignoring.")
 
     # save the config file to .empanada
     with open(os.path.join(config_dir, f'{model_name}.yaml'), mode='w') as f:
