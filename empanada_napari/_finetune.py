@@ -38,9 +38,9 @@ def finetuning_widget():
 
     gui_params = dict(
         model_name=dict(widget_type='LineEdit', label='Model name, no spaces', value='FinetunedModel'),
-        train_dir=dict(widget_type='FileEdit', label='Train directory', mode='d', value="/Users/conradrw/Downloads/pancreas", tooltip='location were annotated training data is saved'),
-        eval_dir=dict(widget_type='FileEdit', label='Validation directory', mode='d', value="/Users/conradrw/Downloads/pancreas", tooltip='location were annotated validation data is saved'),
-        model_dir=dict(widget_type='FileEdit', label='Model directory', mode='d', value="/Users/conradrw/Desktop/finetuning", tooltip='directory in which to save the model weights'),
+        train_dir=dict(widget_type='FileEdit', label='Train directory', mode='d', tooltip='location were annotated training data is saved'),
+        eval_dir=dict(widget_type='FileEdit', label='Validation directory', mode='d', tooltip='location were annotated validation data is saved'),
+        model_dir=dict(widget_type='FileEdit', label='Model directory', mode='d', tooltip='directory in which to save the model weights'),
         finetune_model=dict(widget_type='ComboBox', label='Model to finetune', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='model to use for finetuning'),
         finetune_layer=dict(widget_type='ComboBox', label='Finetunable layers', choices=['none', 'stage4', 'stage3', 'stage2', 'stage1', 'all'], value='none', tooltip='layers to finetune in the encoder'),
         iterations=dict(widget_type='SpinBox', value=100, min=100, max=5000, step=100, label='Iterations', tooltip='number of iterations for finetuning')
