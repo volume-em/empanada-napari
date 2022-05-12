@@ -198,7 +198,9 @@ def main_worker(config):
               scheduler, scaler, epoch, config)
 
         # evaluate on validation set
-        if eval_loader is not None and (epoch + 1) % config['EVAL']['epochs_per_eval'] == 0:
+        is_val_epoch = (epoch + 1) % config['EVAL']['epochs_per_eval'] == 0
+        is_last_epoch = (epoch + 1) % epochs == 0
+        if eval_loader is not None and (is_val_epoch or is_last_epoch):
             validate(eval_loader, model, criterion, epoch, config)
 
         save_now = (epoch + 1) % config['TRAIN']['save_freq'] == 0
