@@ -30,7 +30,7 @@ TRAIN:
 
   # dataset parameters
   batch_size: 16
-  workers: 0
+  workers: 4
 
   augmentations:
     - { aug: "RandomScale", scale_limit: [ -0.9, 1 ]}

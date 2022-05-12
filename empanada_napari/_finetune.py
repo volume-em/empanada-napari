@@ -1,6 +1,7 @@
 import sys
 import yaml
 import os
+import platform
 from typing import Any
 from napari_plugin_engine import napari_hook_implementation
 
@@ -80,7 +81,6 @@ def finetuning_widget():
         else:
             epochs = int(iterations // (n_imgs / 16)) + 1
 
-        epochs = 1
         print(f'Found {n_imgs} images for finetuning. Training for {epochs} epochs.')
 
         # load the model config
@@ -92,6 +92,10 @@ def finetuning_widget():
                 config['MODEL'][k] = model_config[k]
             else:
                 config[k] = model_config[k]
+
+        # training on mac breaks with more than 1 data worker
+        if platform.system() == 'Darwin':
+            config['TRAIN']['workers'] = 0
 
         config['model_name'] = model_name
         config['TRAIN']['train_dir'] = train_dir
