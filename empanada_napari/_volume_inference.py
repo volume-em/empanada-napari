@@ -131,7 +131,7 @@ def volume_inference_widget():
             store_url = os.path.join(store_dir, f'{image_layer.name}_{model_config_name}_napari.zarr')
 
         if not hasattr(widget, 'last_config'):
-            widget.last_config = model_config
+            widget.last_config = model_config_name
 
         if not hasattr(widget, 'using_gpu'):
             widget.using_gpu = use_gpu
@@ -155,9 +155,9 @@ def volume_inference_widget():
                 save_panoptic=return_panoptic,
                 store_url=store_url
             )
-            widget.last_config = model_config
+            widget.last_config = model_config_name
         # conditions where model needs to be (re)loaded
-        elif not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu or use_quantized != widget.using_quantized:
+        elif not hasattr(widget, 'engine') or widget.last_config != model_config_name or use_gpu != widget.using_gpu or use_quantized != widget.using_quantized:
             widget.engine = Engine3d(
                 model_config,
                 inference_scale=downsampling,
@@ -175,7 +175,7 @@ def volume_inference_widget():
                 save_panoptic=return_panoptic,
                 store_url=store_url
             )
-            widget.last_config = model_config
+            widget.last_config = model_config_name
             widget.using_gpu = use_gpu
         else:
             # update the parameters

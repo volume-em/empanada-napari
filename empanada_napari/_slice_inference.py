@@ -116,11 +116,12 @@ def test_widget():
         use_quantized
     ):
         # load the model config
+        model_config_name = model_config
         model_config = read_yaml(model_configs[model_config])
         maximum_objects_per_class = int(maximum_objects_per_class)
 
         if not hasattr(widget, 'last_config'):
-            widget.last_config = model_config
+            widget.last_config = model_config_name
 
         if not hasattr(widget, 'using_gpu'):
             widget.using_gpu = use_gpu
@@ -128,7 +129,7 @@ def test_widget():
         if not hasattr(widget, 'using_quantized'):
             widget.using_quantized = use_quantized
 
-        if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu or use_quantized != widget.using_quantized:
+        if not hasattr(widget, 'engine') or widget.last_config != model_config_name or use_gpu != widget.using_gpu or use_quantized != widget.using_quantized:
             widget.engine = Engine2d(
                 model_config,
                 inference_scale=downsampling,
@@ -141,7 +142,7 @@ def test_widget():
                 use_gpu=use_gpu,
                 use_quantized=use_quantized
             )
-            widget.last_config = model_config
+            widget.last_config = model_config_name
             widget.using_gpu = use_gpu
         else:
             # update the parameters of the engine
