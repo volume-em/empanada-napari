@@ -91,6 +91,7 @@ def test_widget():
     )
 
     gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0')
+    gui_params['use_quantized'] = dict(widget_type='CheckBox', text='Use quantized model', value=device_count() == 0, tooltip='If checked, run on GPU 0')
 
     @magicgui(
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
@@ -111,7 +112,8 @@ def test_widget():
         semantic_only,
         maximum_objects_per_class,
         batch_mode,
-        use_gpu
+        use_gpu,
+        use_quantized
     ):
         # load the model config
         model_config = read_yaml(model_configs[model_config])
@@ -123,7 +125,10 @@ def test_widget():
         if not hasattr(widget, 'using_gpu'):
             widget.using_gpu = use_gpu
 
-        if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
+        if not hasattr(widget, 'using_quantized'):
+            widget.using_quantized = use_quantized
+
+        if not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu or use_quantized != widget.using_quantized:
             widget.engine = Engine2d(
                 model_config,
                 inference_scale=downsampling,
@@ -133,7 +138,8 @@ def test_widget():
                 label_divisor=maximum_objects_per_class,
                 semantic_only=semantic_only,
                 fine_boundaries=fine_boundaries,
-                use_gpu=use_gpu
+                use_gpu=use_gpu,
+                use_quantized=use_quantized
             )
             widget.last_config = model_config
             widget.using_gpu = use_gpu

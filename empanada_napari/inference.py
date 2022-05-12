@@ -200,11 +200,17 @@ class Engine2d:
         confidence_thr=0.3,
         semantic_only=False,
         fine_boundaries=False,
-        use_gpu=True
+        use_gpu=True,
+        use_quantized=False
     ):
         # check whether GPU is available
-        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        model = load_model_to_device(model_config['model'], device)
+        device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
+        if use_quantized and str(device) == 'cpu':
+            model_url = model_config['model_quantized']
+        else:
+            model_url = model_config['model']
+
+        model = load_model_to_device(model_url, device)
         model = model.to(device)
 
         self.thing_list = model_config['thing_list']
@@ -333,12 +339,19 @@ class Engine3d:
         fine_boundaries=False,
         semantic_only=False,
         use_gpu=True,
+        use_quantized=False,
         store_url=None,
         save_panoptic=False
     ):
         # check whether GPU is available
-        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        model = load_model_to_device(model_config['model'], device)
+        # check whether GPU is available
+        device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
+        if use_quantized and str(device) == 'cpu':
+            model_url = model_config['model_quantized']
+        else:
+            model_url = model_config['model']
+
+        model = load_model_to_device(model_url, device)
         model = model.to(device)
 
         self.model_config = model_config

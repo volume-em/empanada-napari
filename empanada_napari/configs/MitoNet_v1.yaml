@@ -24,7 +24,7 @@ class_names:
 labels:
 - 1
 model: "https://www.dropbox.com/s/crp3jhr55ie3d3s/MitoNet_v2.pth?dl=1"
-model_quantized: null
+model_quantized: "https://www.dropbox.com/s/kpen8o7kbq2qpez/MitoNet_v2_quantized.pth?dl=1"
 norms:
   mean: 0.57571
   std: 0.12765
