@@ -1,6 +1,6 @@
 import os
 import time
-
+import yaml
 import torch
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
@@ -14,6 +14,10 @@ from albumentations.pytorch import ToTensorV2
 from empanada import losses
 from empanada import data
 from empanada import metrics
+from empanada.inference import engines
+from empanada.data.utils import FactorPad
+
+from empanada_napari.utils import load_model_to_device
 
 MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
 torch.hub.set_dir(MODEL_DIR)
@@ -37,20 +41,15 @@ datasets = sorted(name for name in data.__dict__
     if callable(data.__dict__[name])
 )
 
+engine_names = sorted(name for name in engines.__dict__
+    if callable(engines.__dict__[name])
+)
+
 loss_names = sorted(name for name in losses.__dict__
     if callable(losses.__dict__[name])
 )
 
 def main(config):
-    # load the model config
-    model_config = load_config(config['MODEL']['config'])
-    config['FINETUNE'] = model_config['FINETUNE']
-    del model_config['FINETUNE']
-    config['MODEL'] = model_config
-
-    config['config_file'] = args.config
-    config['config_name'] = os.path.basename(args.config).split('.yaml')[0]
-
     # create model directory if None
     if not os.path.isdir(config['TRAIN']['model_dir']):
         os.mkdir(config['TRAIN']['model_dir'])
@@ -65,14 +64,15 @@ def main(config):
 
 def main_worker(config):
     config['device'] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    if config['device'] == 'cpu':
-        print('Using CPU for finetuning, this may be slow.')
+
+    if str(config['device']) == 'cpu':
+        print(f"Using CPU for training.")
 
     # setup the model and pick dataset class
-    model = torch.hub.load_state_dict_from_url(config['TRAIN']['whole_pretraining'])
-    dataset_class_name = config['TRAIN']['dataset_class']
+    model = load_model_to_device(config['MODEL']['model'], config['device'])
+    norms = config['MODEL']['norms']
+    dataset_class_name = config['FINETUNE']['dataset_class']
     data_cls = data.__dict__[dataset_class_name]
-    norms = config['DATASET']['norms']
 
     finetune_layer = config['TRAIN']['finetune_layer']
     # start by freezing all encoder parameters
@@ -131,10 +131,10 @@ def main_worker(config):
     ])
 
     # create training dataset and loader
-    train_dataset = data_cls(config['TRAIN']['train_dir'], transforms=tfs, **config['TRAIN']['dataset_params'])
+    train_dataset = data_cls(config['TRAIN']['train_dir'], transforms=tfs, **config['FINETUNE']['dataset_params'])
     if config['TRAIN']['additional_train_dirs'] is not None:
         for train_dir in config['TRAIN']['additional_train_dirs']:
-            add_dataset = data_cls(train_dir, transforms=tfs, **config['TRAIN']['dataset_params'])
+            add_dataset = data_cls(train_dir, transforms=tfs, **config['FINETUNE']['dataset_params'])
             train_dataset = train_dataset + add_dataset
 
     # num workers always less than number of batches in train dataset
@@ -146,9 +146,23 @@ def main_worker(config):
         drop_last=True
     )
 
+    if config['EVAL']['eval_dir'] is not None:
+        eval_tfs = A.Compose([
+            FactorPad(128), # pad image to be divisible by 128
+            A.Normalize(**norms),
+            ToTensorV2()
+        ])
+        eval_dataset = data_cls(config['EVAL']['eval_dir'], transforms=eval_tfs, **config['FINETUNE']['dataset_params'])
+        # evaluation runs on a single gpu
+        eval_loader = DataLoader(eval_dataset, batch_size=1, shuffle=False,
+                                 pin_memory=torch.cuda.is_available(),
+                                 num_workers=config['TRAIN']['workers'])
+    else:
+        eval_loader = None
+
     # set criterion
-    criterion_name = config['TRAIN']['criterion']
-    criterion = losses.__dict__[criterion_name](**config['TRAIN']['criterion_params']).to(config['device'])
+    criterion_name = config['FINETUNE']['criterion']
+    criterion = losses.__dict__[criterion_name](**config['FINETUNE']['criterion_params']).to(config['device'])
 
     # set optimizer and lr scheduler
     opt_name = config['TRAIN']['optimizer']
@@ -183,19 +197,19 @@ def main_worker(config):
         train(train_loader, model, criterion, optimizer,
               scheduler, scaler, epoch, config)
 
+        # evaluate on validation set
+        if eval_loader is not None and (epoch + 1) % config['EVAL']['epochs_per_eval'] == 0:
+            validate(eval_loader, model, criterion, epoch, config)
+
         save_now = (epoch + 1) % config['TRAIN']['save_freq'] == 0
         if save_now:
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': model.state_dict(),
-                'optimizer' : optimizer.state_dict(),
-                'scheduler': scheduler.state_dict(),
-                'scaler': scaler.state_dict(),
-                'norms': norms
-            }, os.path.join(config['TRAIN']['model_dir'], f"{config['config_name']}_checkpoint.pth.tar"))
+            outpath = os.path.join(config['TRAIN']['model_dir'], config['model_name'])
+            torch.jit.save(model, outpath + '.pth')
 
-def save_checkpoint(state, filename='checkpoint.pth.tar'):
-    torch.save(state, filename)
+            config['MODEL']['model'] = outpath + '.pth'
+            config['MODEL']['model_quantized'] = None
+            with open(outpath + '.yaml', mode='w') as f:
+                yaml.dump({'FINETUNE': config['FINETUNE'], **config['MODEL']}, f)
 
 def configure_optimizer(model, opt_name, **opt_params):
     """
@@ -266,7 +280,7 @@ def train(
     )
 
     # end of epoch metrics
-    class_names = config['DATASET']['class_names']
+    class_names = config['MODEL']['class_names']
     metric_dict = {}
     for metric_params in config['TRAIN']['metrics']:
         reg_name = metric_params['name']
@@ -339,6 +353,87 @@ def train(
     print('\n')
     print(f'Epoch {epoch} training metrics:')
     meters.display()
+
+def validate(
+    eval_loader,
+    model,
+    criterion,
+    epoch,
+    config
+):
+    # validation metrics to track
+    class_names = config['MODEL']['class_names']
+    metric_dict = {}
+    for metric_params in config['EVAL']['metrics']:
+        reg_name = metric_params['name']
+        metric_name = metric_params['metric']
+        metric_params = {k: v for k,v in metric_params.items() if k not in ['name', 'metric']}
+        metric_dict[reg_name] = metrics.__dict__[metric_name](metrics.AverageMeter, **metric_params)
+
+    meters = metrics.ComposeMetrics(metric_dict, class_names)
+
+    # validation tracking
+    batch_time = ProgressAverageMeter('Time', ':6.3f')
+    loss_meters = None
+
+    progress = ProgressMeter(
+        len(eval_loader),
+        [batch_time],
+        prefix='Validation: '
+    )
+
+    # create the Inference Engine
+    engine_name = config['FINETUNE']['engine']
+    engine = engines.__dict__[engine_name](model, **config['FINETUNE']['engine_params'])
+
+    for i, batch in enumerate(eval_loader):
+        end = time.time()
+        images = batch['image']
+        target = {k: v for k,v in batch.items() if k not in ['image', 'fname']}
+
+        images = images.to(config['device'], non_blocking=True)
+        target = {k: tensor.to(config['device'], non_blocking=True)
+                  for k,tensor in target.items()}
+
+        # compute panoptic segmentations
+        # from prediction and ground truth
+        output = engine.infer(images)
+        semantic = engine._harden_seg(output['sem'])
+        output['pan_seg'] = engine.postprocess(
+            semantic, output['ctr_hmp'], output['offsets']
+        )
+        target['pan_seg'] = engine.postprocess(
+            target['sem'].unsqueeze(1), target['ctr_hmp'], target['offsets']
+        )
+
+        loss, aux_loss = criterion(output, target)
+
+        # record losses
+        if loss_meters is None:
+            loss_meters = {}
+            for k,v in aux_loss.items():
+                loss_meters[k] = ProgressAverageMeter(k, ':.4e')
+                loss_meters[k].update(v)
+                # add to progress
+                progress.meters.append(loss_meters[k])
+        else:
+            for k,v in aux_loss.items():
+                loss_meters[k].update(v)
+
+        # compute metrics
+        with torch.no_grad():
+            meters.evaluate(output, target)
+
+        batch_time.update(time.time() - end)
+
+        if i % config['TRAIN']['print_freq'] == 0:
+            progress.display(i)
+
+    # end of epoch print evaluation metrics
+    print('\n')
+    print(f'Validation results:')
+    meters.display()
+    print('\n')
 
 class ProgressAverageMeter(metrics.AverageMeter):
     """Computes and stores the average and current value"""
