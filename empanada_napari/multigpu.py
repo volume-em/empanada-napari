@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from empanada.data import VolumeDataset
 from empanada.inference import filters
-from empanada.inference.engines import PanopticDeepLabRenderEngine3d
+from empanada.inference.engines import PanopticDeepLabRenderEngine
 from empanada.inference.tracker import InstanceTracker
 from empanada.inference.postprocess import factor_pad
 from empanada.inference.patterns import *
@@ -81,17 +81,9 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         image = factor_pad(image, config['padding_factor'])
 
         output = inference_engine.infer(image)
+        sem = output['sem']
         instance_cells = inference_engine.get_instance_cells(
             output['ctr_hmp'], output['offsets'], upsampling
-        )
-
-        # correctly resize the sem and instance_cells
-        coarse_sem_logits = output['sem_logits']
-        sem_logits = coarse_sem_logits.clone()
-        features = output['semantic_x']
-        sem, _ = inference_engine.upsample_logits(
-            sem_logits, coarse_sem_logits,
-            features, upsampling * 4
         )
 
         # get median semantic seg
@@ -150,7 +142,6 @@ class MultiGPUEngine3d:
         if not torch.cuda.device_count() > 1:
             raise Exception(f'MultiGPU inference requires multiple GPUs! Run torch.cuda.device_count()')
 
-        # load the base and render models
         self.labels = model_config['labels']
         self.config = model_config
         self.config['model_url'] = model_config['model']
@@ -245,6 +236,14 @@ class MultiGPUEngine3d:
             args=(volume, axis_name, rle_stack, rle_out, self.config),
             join=False
         )
+
+        # NOTE: when using the spawn context, error messages either
+        # don't show up or are unhelpful, comment out the lines above
+        # and use this spawn command for all debugging
+        #mp.spawn(
+        #    main_worker, nprocs=self.config['world_size'],
+        #    args=(volume, axis_name, [], [], self.config)
+        #)
 
         # grab the zarr stack that was filled in
         rle_stack = rle_out.get()[0]
