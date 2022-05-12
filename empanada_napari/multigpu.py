@@ -214,19 +214,8 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     dist.init_process_group(backend='nccl', init_method='tcp://localhost:10001',
                             world_size=config['world_size'], rank=rank)
 
-    # load models and set engine class from file or url
-    if os.path.isfile(config[f'base_model_gpu']):
-        base_model = torch.jit.load(config[f'base_model_gpu'])
-    else:
-        base_model = torch.hub.load_state_dict_from_url(config[f'base_model_gpu'])
-
-    if os.path.isfile(config[f'render_model_gpu']):
-        render_model = torch.jit.load(config[f'render_model_gpu'])
-    else:
-        render_model = torch.hub.load_state_dict_from_url(config[f'render_model_gpu'])
-
     engine_cls = PanopticDeepLabRenderEngine
-    torch.cuda.set_device(config['gpu'])
+    model = load_model_to_device(config['model_url'], torch.device(f'cuda:{gpu}'))
 
     preprocessor = Preprocessor(**config['norms'])
 
@@ -257,10 +246,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         matcher_proc.start()
 
     # create the inference engine
-    base_model = base_model.to(f'cuda:{gpu}')
-    render_model = render_model.to(f'cuda:{gpu}')
-    render_models = {'sem_logits': render_model}
-    inference_engine = engine_cls(base_model, render_models, **config['engine_params'])
+    inference_engine = engine_cls(model, **config['engine_params'])
 
     n = 0
     iterator = dataloader if rank != 0 else tqdm(dataloader, total=len(dataloader))
@@ -341,13 +327,10 @@ class MultiGPUEngine3d:
         if not torch.cuda.device_count() > 1:
             raise Exception(f'MultiGPU inference requires multiple GPUs! Run torch.cuda.device_count()')
 
-        device = 'gpu'
-
         # load the base and render models
         self.labels = model_config['labels']
         self.config = model_config
-        self.config['base_model_url'] = model_config[f'base_model_{device}']
-        self.config['render_model_url'] = model_config[f'render_model_{device}']
+        self.config['model_url'] = model_config['model']
 
         self.config['engine_params'] = {}
         if semantic_only:

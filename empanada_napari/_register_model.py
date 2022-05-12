@@ -10,107 +10,87 @@ def register_model_widget():
     import os
     import yaml
     import shutil
+    import urllib.request
     from glob import glob
-    from zipfile import ZipFile
     from napari.qt.threading import thread_worker
     from empanada.config_loaders import read_yaml
+    from empanada_napari.utils import get_configs
 
-    @thread_worker
-    def unzip_model_files(zip_file, destination):
-        with ZipFile(zip_file, 'r') as handle:
-            handle.extractall(destination)
+    # get list of all available model configs
+    model_configs = get_configs()
 
-        root_dir = destination
-        while True:
-            subdirs = [
-                sd for sd in os.listdir(root_dir)
-                if os.path.isdir(os.path.join(root_dir, sd))
-            ]
-            if len(subdirs) == 0:
-                break
-            elif len(subdirs) == 1:
-                root_dir = os.path.join(root_dir, subdirs[0])
-            else:
-                raise Exception(f'Too many subdirs in zip file!')
+    def valid_url_or_file(fp):
+        valid = False
+        try:
+            f = urllib.request.urlopen(fp)
+            valid = True
+        except:
+            # make sure it's an accessible file
+            valid = os.path.isfile(fp)
 
-        return root_dir
-
+        # if it makes it here, we're good
+        return valid
 
     @magicgui(
         call_button='Register model',
         layout='vertical',
         model_name=dict(widget_type='LineEdit', value='', label='Model name'),
-        zip_file=dict(widget_type='FileEdit', value='', label='Model Zip File', mode='r', tooltip='location of .zip model export from empanada'),
+        config_file=dict(widget_type='FileEdit', value='', label='Model config file', mode='r', tooltip='location of .yaml model config'),
+        model_file=dict(widget_type='FileEdit', value='', label='Model file (optional)', mode='r', tooltip='location of .pth model, file path or url'),
+        model_quant_file=dict(widget_type='FileEdit', value='', label='Quantized model file (optional)', mode='r', tooltip='location of quantized .pth model, file path or url'),
     )
     def widget(
         viewer: napari.viewer.Viewer,
         model_name,
-        zip_file
+        config_file,
+        model_file,
+        model_quant_file
     ):
-        zip_file = str(zip_file)
-        if not model_name:
-            raise Exception(f'Model name cannot be empty!')
+        config_file = str(config_file)
+        model_file = False if str(model_file) == '.' else str(model_file)
+        model_quant_file = False if str(model_quant_file) == '.' else str(model_quant_file)
+        print(config_file, model_file, model_quant_file)
 
-        if not zip_file.endswith('.zip'):
-            raise Exception(f'Model to register must be a .zip file, got {zip_file}')
+        assert model_name, f'Model name cannot be empty!'
+        assert config_file.endswith('.yaml'), f'Model config must be .yaml, got {config_file}'
 
         empanada_dir = os.path.join(os.path.expanduser('~'), '.empanada')
         config_dir = os.path.join(empanada_dir, 'configs')
-        model_dir = os.path.join(empanada_dir, 'models')
-        if not os.path.isdir(empanada_dir):
-            os.mkdir(empanada_dir)
-            os.mkdir(config_dir)
-            os.mkdir(model_dir)
-        elif os.path.isfile(os.path.join(config_dir, f'{model_name}.yaml')):
-            raise Exception(f'Model name {model_name} is already registered, pick something else.')
 
-        # create a temporary directory
-        tmp_dir = os.path.join(empanada_dir, 'tmp')
-        os.mkdir(tmp_dir)
+        # makes both dirs if needed
+        os.makedirs(config_dir, exist_ok=True)
+        if model_name in list(model_configs.keys()):
+            raise Exception(f'Model with name {model_name} already exists!')
 
-        def _process_files(*args):
-            root_dir = args[0]
+        # load the config file
+        config = read_yaml(config_file)
 
-            # load the config file
-            config_files = glob(os.path.join(root_dir, '*.yaml'))
-            if not len(config_files) == 1:
-                raise Exception("There should only be 1 .yaml file in zip!")
-            config = read_yaml(config_files[0])
+        # validate the given model files
+        if model_file:
+            assert valid_url_or_file(model_file), \
+            f"{model_file} not a valid file or url!"
 
-            # get new names for the .pth files
-            pth_files = glob(os.path.join(root_dir, '*.pth'))
-            for fp in pth_files:
-                fn = os.path.basename(fp)
-                if fn.endswith('_base_cpu.pth'):
-                    new_fn = f'{model_name}_base_cpu.pth'
-                    config_key = 'base_model_cpu'
-                elif fn.endswith('_base_gpu.pth'):
-                    new_fn = f'{model_name}_base_gpu.pth'
-                    config_key = 'base_model_gpu'
-                elif fn.endswith('_render_cpu.pth'):
-                    new_fn = f'{model_name}_render_cpu.pth'
-                    config_key = 'render_model_cpu'
-                elif fn.endswith('_render_gpu.pth'):
-                    new_fn = f'{model_name}_render_gpu.pth'
-                    config_key = 'render_model_gpu'
-                else:
-                    raise Exception(f'Unrecognized model file {fp}')
+            # overwrite the model file
+            config['model'] = model_file
+        else:
+            assert valid_url_or_file(config['model']), \
+            f"{config['model']} not a valid file or url!"
 
-                new_fp = os.path.join(model_dir, new_fn)
-                os.rename(fp, new_fp)
-                config[config_key] = new_fp
+        if model_quant_file:
+            assert valid_url_or_file(model_quant_file), \
+            "{model_quant_file} not a valid file or url!"
 
-            # save the config file to configs
-            with open(os.path.join(config_dir, f'{model_name}.yaml'), mode='w') as f:
-                yaml.dump(config, f)
+            # overwrite the model file
+            config['model_quantized'] = model_quant_file
+        elif config['model_quantized'] is not None:
+            assert valid_url_or_file(config['model_quantized']), \
+            f"{config['model_quantized']} not a valid file or url!"
 
-            # delete the temporary directory
-            shutil.rmtree(tmp_dir)
+        # save the config file to .empanada
+        with open(os.path.join(config_dir, f'{model_name}.yaml'), mode='w') as f:
+            yaml.dump(config, f)
 
-        # unzip the file into the configs directory
-        worker = unzip_model_files(zip_file, tmp_dir)
-        worker.returned.connect(_process_files)
-        worker.start()
+    print('Finished!')
 
     return widget
 
