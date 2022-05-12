@@ -19,7 +19,7 @@ from empanada.inference.patterns import *
 
 from napari.qt.threading import thread_worker
 
-from empanada_napari.utils import Preprocessor
+from empanada_napari.utils import Preprocessor, load_model_to_device
 
 MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
 torch.hub.set_dir(MODEL_DIR)
