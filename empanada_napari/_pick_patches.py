@@ -26,7 +26,7 @@ def pick_patches():
         return flipbook
 
     @thread_worker
-    def _random_crops(volume, patch_size, num_patches, isotropic):
+    def _random_crops(volume, patch_size, num_patches, points, isotropic):
         flipbooks = []
         locs = []
         for _ in range(num_patches):
@@ -41,14 +41,31 @@ def pick_patches():
                 axis = 0
                 ha, wa = 1, 2
 
-            # pick a plane from sample of every 3
-            plane = np.random.randint(2, volume.shape[axis] // 3) * 3
-            fb_slice = slice(plane - 2, plane + 3)
+            if points and points is not None:
+                patch_ctr = points.pop(0)
+                plane = patch_ctr[axis]
+                plane = max(2, plane)
+                plane = min(volume.shape[axis] - 3, plane)
+                fb_slice = slice(plane - 2, plane + 3)
 
-            ys = np.random.choice(np.arange(0, max(1, volume.shape[ha] - patch_size), patch_size))
-            xs = np.random.choice(np.arange(0, max(1, volume.shape[wa] - patch_size), patch_size))
-            ye = min(ys + patch_size, volume.shape[ha])
-            xe = min(xs + patch_size, volume.shape[wa])
+                ys = int(patch_ctr[ha] - patch_size / 2)
+                ys = min(ys, volume.shape[ha] - patch_size)
+                ys = max(ys, 0)
+                xs = int(patch_ctr[wa] - patch_size / 2)
+                xs = min(xs, volume.shape[wa] - patch_size)
+                xs = max(xs, 0)
+
+                ye = min(ys + patch_size, volume.shape[ha])
+                xe = min(xs + patch_size, volume.shape[wa])
+            else:
+                # pick a plane from sample of every 3
+                plane = np.random.randint(2, volume.shape[axis] // 3) * 3
+                fb_slice = slice(plane - 2, plane + 3)
+
+                ys = np.random.choice(np.arange(0, max(1, volume.shape[ha] - patch_size), patch_size))
+                xs = np.random.choice(np.arange(0, max(1, volume.shape[wa] - patch_size), patch_size))
+                ye = min(ys + patch_size, volume.shape[ha])
+                xe = min(xs + patch_size, volume.shape[wa])
 
             flipbook = take(volume, fb_slice, axis)
             flipbook = take(flipbook, slice(ys, ye), ha)
@@ -70,8 +87,8 @@ def pick_patches():
         return np.stack(flipbooks, axis=0), locs
 
     gui_params = dict(
-        num_patches=dict(widget_type='SpinBox', value=8, min=1, max=64, step=1, label='Number of patches for annotation'),
-        patch_size=dict(widget_type='SpinBox', value=256, min=128, max=512, step=16, label='Patch size in pixels'),
+        num_patches=dict(widget_type='SpinBox', value=8, min=2, max=32, step=1, label='Number of patches for annotation'),
+        patch_size=dict(widget_type='SpinBox', value=256, min=224, max=512, step=16, label='Patch size in pixels'),
         isotropic=dict(widget_type='CheckBox', text='Take xy,xz,yz', value=False, tooltip='If volume has isotropic voxels, pick patches from all planes.'),
     )
 
@@ -83,6 +100,7 @@ def pick_patches():
     def widget(
         viewer: napari.viewer.Viewer,
         image_layer: napari.layers.Image,
+        points_layer: napari.layers.Points,
         num_patches,
         patch_size,
         isotropic
@@ -91,6 +109,13 @@ def pick_patches():
         volume = image_layer.data
         name = image_layer.name
         assert volume.ndim == 3, "Must be 3D data!"
+
+        if points_layer is not None:
+            local_points = []
+            for pt in points_layer.data:
+                local_points.append(tuple([int(c) for c in image_layer.world_to_data(pt)]))
+        else:
+            local_points = None
 
         def _show_flipbooks(*args):
             flipbooks, locs = args[0]
@@ -102,9 +127,14 @@ def pick_patches():
 
             viewer.add_image(flipbooks, name=f'{name}_flipbooks', metadata=metadata, visible=True)
 
-        crop_worker = _random_crops(volume, patch_size, num_patches, isotropic)
+        crop_worker = _random_crops(volume, patch_size, num_patches, local_points, isotropic)
         crop_worker.returned.connect(_show_flipbooks)
         crop_worker.start()
+
+        # remove all points that
+        # were chosen as patches
+        if points_layer is not None:
+            points_layer.data = points_layer.data[num_patches:]
 
     return widget
 
