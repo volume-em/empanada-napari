@@ -71,7 +71,7 @@ def pick_patches():
 
     gui_params = dict(
         num_patches=dict(widget_type='SpinBox', value=8, min=1, max=64, step=1, label='Number of patches for annotation'),
-        patch_size=dict(widget_type='SpinBox', value=224, min=128, max=512, step=16, label='Patch size in pixels'),
+        patch_size=dict(widget_type='SpinBox', value=256, min=128, max=512, step=16, label='Patch size in pixels'),
         isotropic=dict(widget_type='CheckBox', text='Take xy,xz,yz', value=False, tooltip='If volume has isotropic voxels, pick patches from all planes.'),
     )
 
@@ -198,7 +198,7 @@ def store_dataset():
                 dtype = np.uint8
             else:
                 dtype = np.uint32
-                
+
             io.imsave(os.path.join(outdir, f'{prefix}/masks/{fname}'), msk.astype(dtype), check_contrast=False)
 
         print('Finished saving.')

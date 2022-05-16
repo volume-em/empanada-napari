@@ -6,6 +6,7 @@ except ImportError:
 from ._slice_inference import slice_dock_widget
 from ._volume_inference import volume_dock_widget
 from ._finetune import finetuning_dock_widget
+from ._train import training_dock_widget
 from ._register_model import register_model_dock_widget
 from ._pick_patches import pick_patches_widget, store_dataset_widget
 from ._merge_split_widget import (
@@ -17,6 +18,7 @@ __all__ = [
     'slice_dock_widget',
     'volume_dock_widget',
     'finetune_dock_widget',
+    'training_dock_widget',
     'register_model_dock_widget',
     'pick_patches_widget',
     'store_dataset_widget',
