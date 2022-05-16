@@ -14,8 +14,9 @@ from napari.layers import Image, Shapes
 from magicgui import magicgui
 
 def training_widget():
-    from glob import glob
     import yaml
+    import torch
+    from glob import glob
     from napari.qt.threading import thread_worker
     from empanada_napari.utils import abspath, get_configs, add_new_model
     from empanada.config_loaders import load_config
@@ -26,7 +27,7 @@ def training_widget():
     main_config = abspath(__file__, 'training/train_config.yaml')
     cem_weights = "https://zenodo.org/record/6453160/files/cem1.5m_swav_resnet50_200ep_balanced.pth.tar?download=1"
     model_configs = {
-        #'PanopticDeepLab': abspath(__file__, 'training/pdl_model.yaml'),
+        'PanopticDeepLab': abspath(__file__, 'training/pdl_model.yaml'),
         'PanopticBiFPN': abspath(__file__, 'training/bifpn_model.yaml')
     }
     logo = abspath(__file__, 'resources/empanada_logo.png')
@@ -99,11 +100,11 @@ def training_widget():
 
     gui_params = dict(
         model_name=dict(widget_type='LineEdit', label='Model name, no spaces', value='FinetunedModel'),
-        train_dir=dict(widget_type='FileEdit', label='Train directory', mode='d', tooltip='location were annotated training data is saved', value='/Users/conradrw/Downloads/er_mito_nuclei/'),
-        eval_dir=dict(widget_type='FileEdit', label='Validation directory (optional)', mode='d', tooltip='location were annotated validation data is saved', value='/Users/conradrw/Downloads/er_mito_nuclei/'),
-        model_dir=dict(widget_type='FileEdit', label='Model directory', mode='d', tooltip='directory in which to save the model weights', value='/Users/conradrw/Desktop/finetuning/'),
+        train_dir=dict(widget_type='FileEdit', label='Train directory', mode='d', tooltip='location were annotated training data is saved'),
+        eval_dir=dict(widget_type='FileEdit', label='Validation directory (optional)', mode='d', tooltip='location were annotated validation data is saved'),
+        model_dir=dict(widget_type='FileEdit', label='Model directory', mode='d', tooltip='directory in which to save the model weights'),
 
-        label_text=dict(widget_type='TextEdit', label='Dataset labels', tooltip='Separate line for each class. Each line must be {class_number},{class_name},{instance_or_semantic}', value="1,er,semantic\n2,mito,instance\n3,nucleus,semantic"),
+        label_text=dict(widget_type='TextEdit', label='Dataset labels', tooltip='Separate line for each class. Each line must be {class_number},{class_name},{instance_or_semantic}'),
         label_divisor=dict(widget_type='LineEdit', label='Label divisor', value='1000', tooltip='Divisor used when annotating multiple classes. Ignored for single class instance segmentation.'),
 
         model_arch=dict(widget_type='ComboBox', label='Model architecture', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model architecture to train.'),
@@ -151,7 +152,6 @@ def training_widget():
         else:
             epochs = int(iterations // (n_imgs / 16))
 
-        epochs = 5
         print(f'Found {n_imgs} images for training. Training for {epochs} epochs.')
 
         # extract class_names, labels, and thing list
@@ -222,6 +222,7 @@ def training_widget():
 
         def _register_new_model(outpath):
             add_new_model(model_name, outpath)
+            print(f'Registered new model {model_name}')
 
         worker = run_training(config)
         worker.returned.connect(_register_new_model)

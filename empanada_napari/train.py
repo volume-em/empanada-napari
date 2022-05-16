@@ -60,7 +60,7 @@ def main(config):
     assert config['TRAIN']['criterion'] in loss_names
     assert config['EVAL']['engine'] in engine_names
 
-    main_worker(config)
+    return main_worker(config)
 
 def main_worker(config):
     config['device'] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
