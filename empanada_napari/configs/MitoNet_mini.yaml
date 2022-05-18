@@ -1,0 +1,33 @@
+FINETUNE:
+  criterion: PanopticLoss
+  criterion_params:
+    ce_weight: 1
+    l1_weight: 0.01
+    mse_weight: 200
+    pr_weight: 1
+    top_k_percent: 0.2
+  dataset_class: SingleClassInstanceDataset
+  dataset_params:
+    weight_gamma: 0.7
+  engine: PanopticDeepLabEngine
+  engine_params:
+    confidence_thr: 0.5
+    label_divisor: 1000
+    nms_kernel: 7
+    nms_threshold: 0.1
+    stuff_area: 64
+    thing_list:
+    - 1
+    void_label: 0
+class_names:
+  1: mito
+labels:
+- 1
+model: https://www.dropbox.com/s/71s03kwh336t1es/MitoNet_mini.pth?dl=0
+model_quantized: https://www.dropbox.com/s/y6i90ogv4k2stch/MitoNet_mini_quantized.pth?dl=1
+norms:
+  mean: 0.57571
+  std: 0.12765
+padding_factor: 128
+thing_list:
+- 1
