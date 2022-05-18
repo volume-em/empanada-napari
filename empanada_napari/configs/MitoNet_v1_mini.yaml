@@ -23,7 +23,7 @@ class_names:
   1: mito
 labels:
 - 1
-model: https://www.dropbox.com/s/71s03kwh336t1es/MitoNet_mini.pth?dl=0
+model: https://www.dropbox.com/s/71s03kwh336t1es/MitoNet_mini.pth?dl=1
 model_quantized: https://www.dropbox.com/s/y6i90ogv4k2stch/MitoNet_mini_quantized.pth?dl=1
 norms:
   mean: 0.57571
