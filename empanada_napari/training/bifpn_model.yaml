@@ -4,8 +4,6 @@ num_classes: null
 fpn_dim: 128
 fpn_layers: 3
 ins_decoder: True
-confidence_head: False
-confidence_bins: 5
 depthwise: True
 
 # point_rend arguments
