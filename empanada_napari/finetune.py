@@ -227,9 +227,9 @@ def configure_optimizer(model, opt_name, **opt_params):
     elif opt_params['weight_decay'] == 0:
         return optim.__dict__[opt_name](model.parameters(), **opt_params)
 
-    # otherwise separate parameters into two groups
     decay = set()
     no_decay = set()
+    param_dict = {}
 
     blacklist = (torch.nn.BatchNorm2d,)
     for mn, m in model.named_modules():
@@ -243,7 +243,8 @@ def configure_optimizer(model, opt_name, **opt_params):
             else:
                 decay.add(full_name)
 
-    param_dict = {pn: p for pn, p in model.named_parameters()}
+            param_dict[full_name] = p
+
     inter_params = decay & no_decay
     union_params = decay | no_decay
     assert(len(inter_params) == 0), "Overlapping decay and no decay"
