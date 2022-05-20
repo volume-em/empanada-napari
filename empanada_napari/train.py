@@ -106,7 +106,7 @@ def main_worker(config):
             means.append(img.mean())
             stds.append(img.std())
 
-        norms = {'mean': np.mean(means) / 255, 'std': np.mean(stds) / 255}
+        norms = {'mean': np.mean(means).item() / 255, 'std': np.mean(stds).item() / 255}
         print('Norms:', norms)
 
     finetune_layer = config['TRAIN']['finetune_layer']

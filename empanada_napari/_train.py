@@ -145,17 +145,6 @@ def training_widget():
 
         assert os.path.isdir(train_dir)
 
-        # get number of images in train_dir
-        n_imgs = len(glob(os.path.join(train_dir, '**/images/*')))
-        if not n_imgs:
-            raise Exception(f"No images found in {os.path.join(train_dir, '**/images/*')}")
-        elif n_imgs < 16:
-            raise Exception(f'Need 16 images for model training, got {n_imgs}.')
-        else:
-            epochs = int(iterations // (n_imgs / 16))
-
-        print(f'Found {n_imgs} images for training. Training for {epochs} epochs.')
-
         # extract class_names, labels, and thing list
         class_names = {}
         thing_list = []
@@ -202,6 +191,18 @@ def training_widget():
             config['TRAIN']['dataset_params']['labels'] = config['DATASET']['labels']
             config['TRAIN']['dataset_params']['thing_list'] = config['DATASET']['thing_list']
             config['TRAIN']['dataset_params']['label_divisor'] = int(label_divisor)
+
+        # get number of images in train_dir
+        n_imgs = len(glob(os.path.join(train_dir, '**/images/*')))
+        bsz = config['TRAIN']['batch_size']
+        if not n_imgs:
+            raise Exception(f"No images found in {os.path.join(train_dir, '**/images/*')}")
+        elif n_imgs < bsz:
+            raise Exception(f'Need {bsz} images for batch size {bsz}, got {n_imgs}.')
+        else:
+            epochs = int(iterations // (n_imgs // bsz))
+
+        print(f'Found {n_imgs} images for training. Training for {epochs} epochs.')
 
         config['EVAL']['eval_dir'] = eval_dir
         config['EVAL']['epochs_per_eval'] = epochs // 5
