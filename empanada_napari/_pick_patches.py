@@ -10,6 +10,18 @@ from empanada.array_utils import take
 
 def pick_patches():
     from napari.qt.threading import thread_worker
+    
+    def _pad_patch(patch, size):
+        h, w = patch.shape
+        assert size[0] >= h and size[1] >= w
+
+        ph, pw = size[0] - h, size[1] - w
+
+        patch = np.pad(patch, ((0, ph), (0, pw)))
+        assert patch .shape[0] == size[0]
+        assert patch.shape[1] == size[1]
+
+        return patch 
 
     def _pad_flipbook(flipbook, size):
         assert flipbook.ndim == 3
@@ -26,7 +38,66 @@ def pick_patches():
         return flipbook
 
     @thread_worker
-    def _random_crops(volume, patch_size, num_patches, points, isotropic):
+    def _pick_patches(image, patch_size, num_patches, points):
+        patches = []
+        locs = []
+        for _ in range(num_patches):
+            plane = None
+            if points and points is not None:
+                patch_ctr = points.pop(0)
+                if len(patch_ctr) == 2:
+                    ys = int(patch_ctr[0] - patch_size / 2)
+                    ys = min(ys, image.shape[0] - patch_size)
+                    ys = max(ys, 0)
+                    xs = int(patch_ctr[1] - patch_size / 2)
+                    xs = min(xs, image.shape[1] - patch_size)
+                    xs = max(xs, 0)
+
+                    ye = min(ys + patch_size, image.shape[0])
+                    xe = min(xs + patch_size, image.shape[1])
+                    patch = image[ys:ye, xs:xe]
+                else:
+                    plane = patch_ctr[0]
+                    ys = int(patch_ctr[1] - patch_size / 2)
+                    ys = min(ys, image.shape[1] - patch_size)
+                    ys = max(ys, 0)
+                    xs = int(patch_ctr[2] - patch_size / 2)
+                    xs = min(xs, image.shape[2] - patch_size)
+                    xs = max(xs, 0)
+
+                    ye = min(ys + patch_size, image.shape[1])
+                    xe = min(xs + patch_size, image.shape[2])
+                    patch = image[plane, ys:ye, xs:xe]
+            else:
+                if image.ndim == 2:
+                    ys = np.random.choice(np.arange(0, max(1, image.shape[0] - patch_size), patch_size))
+                    xs = np.random.choice(np.arange(0, max(1, image.shape[1] - patch_size), patch_size))
+                    ye = min(ys + patch_size, image.shape[0])
+                    xe = min(xs + patch_size, image.shape[1])
+                    patch = image[ys:ye, xs:xe]
+                else:
+                    plane = np.random.randint(0, image.shape[0]) 
+                    ys = np.random.choice(np.arange(0, max(1, image.shape[1] - patch_size), patch_size))
+                    xs = np.random.choice(np.arange(0, max(1, image.shape[2] - patch_size), patch_size))
+                    ye = min(ys + patch_size, image.shape[1])
+                    xe = min(xs + patch_size, image.shape[2])
+                    patch = image[plane, ys:ye, xs:xe]
+
+            if type(patch) == da.core.Array:
+                patch = patch.compute()
+
+            patch = _pad_patch(patch, (patch_size, patch_size))
+
+            patches.append(patch)
+            if plane is None:
+                locs.append((ys, ye, xs, xe))
+            else:
+                locs.append((plane, ys, ye, xs, xe))
+
+        return np.stack(patches, axis=0), locs
+
+    @thread_worker
+    def _pick_flipbooks(image, patch_size, num_patches, points, isotropic):
         flipbooks = []
         locs = []
         for _ in range(num_patches):
@@ -45,29 +116,29 @@ def pick_patches():
                 patch_ctr = points.pop(0)
                 plane = patch_ctr[axis]
                 plane = max(2, plane)
-                plane = min(volume.shape[axis] - 3, plane)
+                plane = min(image.shape[axis] - 3, plane)
                 fb_slice = slice(plane - 2, plane + 3)
 
                 ys = int(patch_ctr[ha] - patch_size / 2)
-                ys = min(ys, volume.shape[ha] - patch_size)
+                ys = min(ys, image.shape[ha] - patch_size)
                 ys = max(ys, 0)
                 xs = int(patch_ctr[wa] - patch_size / 2)
-                xs = min(xs, volume.shape[wa] - patch_size)
+                xs = min(xs, image.shape[wa] - patch_size)
                 xs = max(xs, 0)
 
-                ye = min(ys + patch_size, volume.shape[ha])
-                xe = min(xs + patch_size, volume.shape[wa])
+                ye = min(ys + patch_size, image.shape[ha])
+                xe = min(xs + patch_size, image.shape[wa])
             else:
                 # pick a plane from sample of every 3
-                plane = np.random.randint(2, volume.shape[axis] // 3) * 3
+                plane = np.random.randint(2, image.shape[axis] // 3) * 3
                 fb_slice = slice(plane - 2, plane + 3)
 
-                ys = np.random.choice(np.arange(0, max(1, volume.shape[ha] - patch_size), patch_size))
-                xs = np.random.choice(np.arange(0, max(1, volume.shape[wa] - patch_size), patch_size))
-                ye = min(ys + patch_size, volume.shape[ha])
-                xe = min(xs + patch_size, volume.shape[wa])
+                ys = np.random.choice(np.arange(0, max(1, image.shape[ha] - patch_size), patch_size))
+                xs = np.random.choice(np.arange(0, max(1, image.shape[wa] - patch_size), patch_size))
+                ye = min(ys + patch_size, image.shape[ha])
+                xe = min(xs + patch_size, image.shape[wa])
 
-            flipbook = take(volume, fb_slice, axis)
+            flipbook = take(image, fb_slice, axis)
             flipbook = take(flipbook, slice(ys, ye), ha)
             flipbook = take(flipbook, slice(xs, xe), wa)
 
@@ -87,9 +158,12 @@ def pick_patches():
         return np.stack(flipbooks, axis=0), locs
 
     gui_params = dict(
-        num_patches=dict(widget_type='SpinBox', value=8, min=2, max=32, step=1, label='Number of patches for annotation'),
+        num_patches=dict(widget_type='SpinBox', value=8, min=1, max=32, step=1, label='Number of patches for annotation'),
         patch_size=dict(widget_type='SpinBox', value=256, min=224, max=512, step=16, label='Patch size in pixels'),
-        isotropic=dict(widget_type='CheckBox', text='Take xy,xz,yz', value=False, tooltip='If volume has isotropic voxels, pick patches from all planes.'),
+        pyramid_level=dict(widget_type='ComboBox', choices=list(range(9)), value=0, label='Multiscale image level', tooltip='If image layer is a multiscale image, pick the resolution level for patches. Assumes 2x scaling between levels.'),
+        pick_points_only=dict(widget_type='CheckBox', text='Pick all points', value=False, tooltip='Overwrites the number of patches and creates patches for all points.'),
+        isotropic=dict(widget_type='CheckBox', text='Pick from xy, xz, or yz', value=False, tooltip='If a image with isotropic voxels, pick patches from all planes.'),
+        is_2d_stack=dict(widget_type='CheckBox', text='Image is 2D stack', value=False, tooltip='Check if image layer is a stack of 2D images.')
     )
 
     @magicgui(
@@ -103,19 +177,37 @@ def pick_patches():
         points_layer: napari.layers.Points,
         num_patches,
         patch_size,
-        isotropic
+        pyramid_level,
+        pick_points_only,
+        isotropic,
+        is_2d_stack
     ):
-
-        volume = image_layer.data
         name = image_layer.name
-        assert volume.ndim == 3, "Must be 3D data!"
-
         if points_layer is not None:
             local_points = []
             for pt in points_layer.data:
                 local_points.append(tuple([int(c) for c in image_layer.world_to_data(pt)]))
         else:
             local_points = None
+
+        if pick_points_only:
+            num_patches = len(local_points)
+        
+        def _show_patches(*args):
+            patches, locs = args[0]
+
+            if len(locs[0]) == 5:
+                suffices = [f'-LOC-2d-{l[0]}_{l[1]}-{l[2]}_{l[3]}-{l[4]}' for l in locs]
+            else:
+                suffices = [f'-LOC-2d_{l[0]}-{l[1]}_{l[2]}-{l[3]}' for l in locs]
+
+            metadata = {
+                'prefix': f'{name}',
+                'suffices': suffices 
+            }
+
+            viewer.add_image(patches, name=f'{name}_patches', metadata=metadata, visible=True)
+            viewer.add_labels(np.zeros(patches.shape, dtype=np.uint32), name=f'{name}_patches_labels', metadata=metadata, visible=True)
 
         def _show_flipbooks(*args):
             flipbooks, locs = args[0]
@@ -126,9 +218,26 @@ def pick_patches():
             }
 
             viewer.add_image(flipbooks, name=f'{name}_flipbooks', metadata=metadata, visible=True)
+            viewer.add_labels(np.zeros(flipbooks.shape, dtype=np.uint32), name=f'{name}_flipbooks_labels', metadata=metadata, visible=True)
 
-        crop_worker = _random_crops(volume, patch_size, num_patches, local_points, isotropic)
-        crop_worker.returned.connect(_show_flipbooks)
+        if image_layer.multiscale:
+            image = image_layer.data[pyramid_level]
+            # scale the points by pyramid level
+            if local_points is not None:
+                local_points = [tuple([int(c / (2 ** pyramid_level)) for c in pt]) for pt in local_points]
+        else:
+            image = image_layer.data
+
+        ndim = image.ndim 
+        assert ndim in [2, 3], "Must be 2D or 3D data!"
+                
+        if ndim == 2 or is_2d_stack:
+            crop_worker = _pick_patches(image, patch_size, num_patches, local_points)
+            crop_worker.returned.connect(_show_patches)
+        else:
+            crop_worker = _pick_flipbooks(image, patch_size, num_patches, local_points, isotropic)
+            crop_worker.returned.connect(_show_flipbooks)
+
         crop_worker.start()
 
         # remove all points that
@@ -157,9 +266,8 @@ def store_dataset():
 
     gui_params = dict(
         save_dir=dict(widget_type='FileEdit', value='./', label='Save directory', mode='d', tooltip='Directory in which to create a new dataset.'),
-        dataset_name=dict(widget_type='LineEdit', value='', label='Dataset name', tooltip='Name to use for the dataset, creates a directory in the Save Directory with this name')
+        dataset_name=dict(widget_type='LineEdit', value='', label='Dataset name', tooltip='Name to use for the dataset, creates a directory in the Save Directory with this name, if appends if directory already exists.'),
     )
-
     @magicgui(
         call_button='Save flipbooks',
         layout='vertical',
@@ -175,19 +283,9 @@ def store_dataset():
 
         assert dataset_name, "Must provide a dataset name!"
 
-        flipbooks = image_layer.data
-        flipbook_labels = labels_layer.data
-        assert flipbooks.ndim == 4, "Flipbooks are expected to be 4D. Did you pick the right image layer?"
-        assert flipbook_labels.ndim == 4, "Labels are expected to be 4D. Did you pick the right labels layer?"
-        assert flipbooks.shape[1] == 5, "Flipbooks must be 5 slices long!"
-
-        # labels can span entire image space,
-        # crop them to only span the given flipbook space
-        if not np.allclose(flipbooks.shape, flipbook_labels.shape):
-            assert all([sfl >= sf for sfl,sf in zip(flipbook_labels.shape, flipbooks.shape)])
-            a,b,c,d = flipbooks.shape
-            flipbook_labels = flipbook_labels[:a, :b, :c, :d]
-            print(f'Cropped labels to match flipbook image size.')
+        patches = image_layer.data
+        patch_labels = labels_layer.data
+        assert patches.shape == patch_labels.shape, "Patch and label shapes must match!"
 
         if image_layer.metadata:
             has_metadata = True
@@ -196,23 +294,31 @@ def store_dataset():
         else:
             has_metadata = False
             prefix = 'unknown'
-            suffices = ['-' + _random_suffix() for _ in range(len(flipbooks))]
+            suffices = ['-' + _random_suffix() for _ in range(len(patches))]
 
-        # get middle images of flipbooks
-        images = flipbooks[:, 2]
-        masks = flipbook_labels[:, 2]
+        if patches.ndim == 4:
+            # get middle images of flipbooks
+            images = patches[:, 2]
+            masks = patch_labels[:, 2]
+        else:
+            images = patches
+            masks = patch_labels
 
         outdir = os.path.join(save_dir, dataset_name)
         if not os.path.isdir(outdir):
             os.makedirs(outdir, exist_ok=True)
-            os.makedirs(os.path.join(outdir, f'{prefix}/images'), exist_ok=True)
-            os.makedirs(os.path.join(outdir, f'{prefix}/masks'), exist_ok=True)
             print('Created directory', outdir)
+        else:
+            print('Adding images to existing directory', outdir)
+
+        os.makedirs(os.path.join(outdir, f'{prefix}/images'), exist_ok=True)
+        os.makedirs(os.path.join(outdir, f'{prefix}/masks'), exist_ok=True)
 
         for sfx,img,msk in zip(suffices, images, masks):
             fname = f'{prefix}{sfx}.tiff'
 
             # if we have metadata, use it to crop image and mask
+            # and remove excess padding
             if has_metadata:
                 hrange, wrange = sfx.split('_')[-2:]
                 hmin, hmax = hrange.split('-')

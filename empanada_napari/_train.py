@@ -110,7 +110,8 @@ def training_widget():
         model_arch=dict(widget_type='ComboBox', label='Model architecture', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model architecture to train.'),
         use_cem=dict(widget_type='CheckBox', text='Use CEM pretrained weights', value=True, tooltip='Whether to initialize model with CEM pretrained weights.'),
         finetune_layer=dict(widget_type='ComboBox', label='Finetunable layers', choices=['none', 'stage4', 'stage3', 'stage2', 'stage1', 'all'], value='all', tooltip='Layers to finetune in the encoder. Ignored if not using CEM weights.'),
-        iterations=dict(widget_type='SpinBox', value=100, min=100, max=10000, step=100, label='Iterations', tooltip='number of iterations for model training')
+        iterations=dict(widget_type='SpinBox', value=100, min=100, max=10000, step=100, label='Iterations', tooltip='number of iterations for model training'),
+        custom_config=dict(widget_type='FileEdit', label='Custom config (optional)', value='default config', tooltip='path to a custom empanada training config file; will not overwrite other parameters.'),
     )
     @magicgui(
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
@@ -133,7 +134,8 @@ def training_widget():
         model_arch,
         use_cem,
         finetune_layer,
-        iterations
+        iterations,
+        custom_config
     ):
         train_dir = str(train_dir)
         model_dir = str(model_dir)
@@ -163,8 +165,14 @@ def training_widget():
             if class_kind == 'instance':
                 thing_list.append(int(class_id))
 
+        if custom_config != 'default config':
+            custom_config = str(custom_config)
+            assert os.path.isfile(custom_config)
+            config = load_config(custom_config)
+        else:
+            config = load_config(main_config)
+
         # load the model config
-        config = load_config(main_config)
         config['MODEL'] = load_config(model_configs[model_arch])
         n_classes = len(class_names)
         config['MODEL']['num_classes'] = n_classes + 1 if n_classes > 1 else 1

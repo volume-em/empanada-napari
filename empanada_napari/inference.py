@@ -142,7 +142,7 @@ def tracker_consensus(
             filters.remove_small_objects(consensus_tracker, min_size=min_size)
             filters.remove_pancakes(consensus_tracker, min_span=min_extent)
         else:
-            consensus_tracker = create_semantic_consensus(class_trackers, args.pixel_vote_thr)
+            consensus_tracker = create_semantic_consensus(class_trackers, pixel_vote_thr)
 
         print(f'Total {class_name} objects {len(consensus_tracker.instances.keys())}')
 
@@ -255,7 +255,7 @@ class Engine2d:
 
         # engine handles upsampling and padding
         pan_seg = self.engine(image, size, upsampling=self.inference_scale)
-        return pan_seg.squeeze().cpu().numpy()
+        return pan_seg.squeeze().cpu().numpy().astype(np.uint32)
 
 class Engine3d:
     r"""Engine for 3D ortho-plane and stack inference"""
