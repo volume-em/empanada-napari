@@ -96,7 +96,9 @@ def add_new_model(
     # makes both dirs if needed
     os.makedirs(config_dir, exist_ok=True)
     if model_name in list(model_configs.keys()):
-        raise Exception(f'Model with name {model_name} already exists!')
+        print('Model name already exists!')
+        model_name = model_name + 'New'
+        print(f'Renaming to: {model_name}')
 
     # load the config file
     config = read_yaml(config_file)

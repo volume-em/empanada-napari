@@ -1,10 +1,8 @@
-"""
-All variables that are set to null are overwriten by parameters set in the GUI
-and should not be changed. Everything else is customizable.
+# All variables that are set to null are overwriten by parameters set in the GUI
+# and should not be changed. Everything else is customizable.
 
-For detailed notes see:
-https://empanada.readthedocs.io/en/latest/tutorial/config.html
-"""
+# For detailed notes see:
+# https://empanada.readthedocs.io/en/latest/tutorial/config.html
 
 model_name: null
 
