@@ -1,3 +1,11 @@
+"""
+All variables that are set to null are overwriten by parameters set in the GUI
+and should not be changed. Everything else is customizable.
+
+For detailed notes see:
+https://empanada.readthedocs.io/en/latest/tutorial/config.html
+"""
+
 model_name: null
 
 DATASET:
@@ -7,15 +15,7 @@ DATASET:
   norms: null
 
 TRAIN:
-  train_dir: null
-  additional_train_dirs: null
-  model_dir: null
-  save_freq: null
-
-  # pretraining parameters
-  encoder_pretraining: null
-  finetune_layer: null
-
+  # CUSTOMIZABLE PARAMETERS
   # set the lr schedule
   lr_schedule: "OneCycleLR"
   schedule_params:
@@ -44,7 +44,7 @@ TRAIN:
   metrics:
       - { metric: "IoU", name: "semantic_iou", labels: null, output_key: "sem_logits",  target_key: "sem"}
 
-  # dataset parameters
+  # data loading parameters
   batch_size: 16
   workers: 4
 
@@ -60,6 +60,16 @@ TRAIN:
     - { aug: "RandomBrightnessContrast", brightness_limit: 0.3, contrast_limit: 0.3 }
     - { aug: "HorizontalFlip" }
     - { aug: "VerticalFlip" }
+
+  # NOT CUSTOMIZABLE GUI PARAMETERS
+  train_dir: null
+  additional_train_dirs: null
+  model_dir: null
+  save_freq: null
+
+  # pretraining parameters
+  encoder_pretraining: null
+  finetune_layer: null
 
 EVAL:
   eval_dir: null

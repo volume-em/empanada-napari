@@ -1,7 +1,8 @@
 import os
 import time
-import argparse
-import random
+import numpy as np
+from tqdm import tqdm
+from glob import glob
 
 import torch
 import torch.optim as optim
@@ -93,6 +94,19 @@ def main_worker(config):
         norms['std'] = state['norms'][1]
     else:
         norms = config['DATASET']['norms']
+
+    if norms is None:
+        print('Calculating dataset norms...')
+        impaths = glob(os.path.join(config['TRAIN']['train_dir'], '**/images/*'))
+        means = []
+        stds = []
+        for imp in tqdm(impaths):
+            img = io.imread(imp)
+            means.append(img.mean())
+            stds.append(img.std())
+
+        norms = {'mean': np.mean(means), 'std': np.mean(stds)}
+        print('Norms:', norms)
 
     finetune_layer = config['TRAIN']['finetune_layer']
     # start by freezing all encoder parameters

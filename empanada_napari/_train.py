@@ -225,9 +225,6 @@ def training_widget():
             else:
                 raise Exception('Unsupported metric', metric['metric'])
 
-        if not use_cem:
-            raise Exception('Need to calculate norms before training!')
-
         def _register_new_model(outpath):
             add_new_model(model_name, outpath)
             print(f'Registered new model {model_name}')
