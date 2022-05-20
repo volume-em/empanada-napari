@@ -102,10 +102,11 @@ def main_worker(config):
         stds = []
         for imp in tqdm(impaths):
             img = io.imread(imp)
+            assert img.dtype == np.uint8
             means.append(img.mean())
             stds.append(img.std())
 
-        norms = {'mean': np.mean(means), 'std': np.mean(stds)}
+        norms = {'mean': np.mean(means) / 255, 'std': np.mean(stds) / 255}
         print('Norms:', norms)
 
     finetune_layer = config['TRAIN']['finetune_layer']
