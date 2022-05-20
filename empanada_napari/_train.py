@@ -161,12 +161,13 @@ def training_widget():
         thing_list = []
         for seg_class in label_text.split('\n'):
             class_id, class_name, class_kind = seg_class.split(',')
+            assert class_kind in ['semantic', 'instance'], "Class kind must be 'semantic' or 'instance'"
             class_names[int(class_id)] = class_name
             if class_kind == 'instance':
                 thing_list.append(int(class_id))
 
+        custom_config = str(custom_config)
         if custom_config != 'default config':
-            custom_config = str(custom_config)
             assert os.path.isfile(custom_config)
             config = load_config(custom_config)
         else:

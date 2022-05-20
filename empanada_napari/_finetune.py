@@ -85,8 +85,8 @@ def finetuning_widget():
 
         print(f'Found {n_imgs} images for finetuning. Training for {epochs} epochs.')
 
+        custom_config = str(custom_config)
         if custom_config != 'default config':
-            custom_config = str(custom_config)
             assert os.path.isfile(custom_config)
             config = load_config(custom_config)
         else:
