@@ -182,7 +182,6 @@ def training_widget():
         config['TRAIN']['model_dir'] = model_dir
         config['TRAIN']['finetune_layer'] = finetune_layer if use_cem else 'all'
         config['TRAIN']['encoder_pretraining'] = cem_weights if use_cem else None
-        config['TRAIN']['save_freq'] = epochs // 5
 
         if n_classes == 1:
             config['TRAIN']['dataset_class'] = "SingleClassInstanceDataset"
@@ -204,6 +203,7 @@ def training_widget():
 
         print(f'Found {n_imgs} images for training. Training for {epochs} epochs.')
 
+        config['TRAIN']['save_freq'] = epochs // 5
         config['EVAL']['eval_dir'] = eval_dir
         config['EVAL']['epochs_per_eval'] = epochs // 5
 
