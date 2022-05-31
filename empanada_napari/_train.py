@@ -99,7 +99,7 @@ def training_widget():
         return export_config_path
 
     gui_params = dict(
-        model_name=dict(widget_type='LineEdit', label='Model name, no spaces', value='FinetunedModel'),
+        model_name=dict(widget_type='LineEdit', label='Model name, no spaces', value='NewModel'),
         train_dir=dict(widget_type='FileEdit', label='Train directory', mode='d', tooltip='location were annotated training data is saved'),
         eval_dir=dict(widget_type='FileEdit', label='Validation directory (optional)', mode='d', tooltip='location were annotated validation data is saved'),
         model_dir=dict(widget_type='FileEdit', label='Model directory', mode='d', tooltip='directory in which to save the model weights'),

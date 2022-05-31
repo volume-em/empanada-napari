@@ -117,10 +117,7 @@ def main_worker(config):
 
         config['aug_string'].append(aug_params['aug'])
         del aug_params['aug']
-        if aug_name == 'CopyPaste':
-            dataset_augs.append(CopyPaste(**aug_params))
-        else:
-            dataset_augs.append(A.__dict__[aug_name](**aug_params))
+        dataset_augs.append(A.__dict__[aug_name](**aug_params))
 
     config['aug_string'] = ','.join(config['aug_string'])
 
