@@ -188,6 +188,10 @@ def training_widget():
         config['TRAIN']['finetune_layer'] = finetune_layer if use_cem else 'all'
         config['TRAIN']['encoder_pretraining'] = cem_weights if use_cem else None
 
+        # turn off the instance decoder if all semantic channels
+        if not thing_list:
+            config['MODEL']['ins_decoder'] = False
+
         if n_classes == 1:
             config['TRAIN']['dataset_class'] = "SingleClassInstanceDataset"
         else:
