@@ -111,6 +111,7 @@ def training_widget():
         use_cem=dict(widget_type='CheckBox', text='Use CEM pretrained weights', value=True, tooltip='Whether to initialize model with CEM pretrained weights.'),
         finetune_layer=dict(widget_type='ComboBox', label='Finetunable layers', choices=['none', 'stage4', 'stage3', 'stage2', 'stage1', 'all'], value='all', tooltip='Layers to finetune in the encoder. Ignored if not using CEM weights.'),
         iterations=dict(widget_type='SpinBox', value=100, min=100, max=10000, step=100, label='Iterations', tooltip='number of iterations for model training'),
+        patch_size=dict(widget_type='SpinBox', value=256, min=224, max=512, step=16, label='Patch size in pixels'),
         custom_config=dict(widget_type='FileEdit', label='Custom config (optional)', value='default config', tooltip='path to a custom empanada training config file; will only overwrite the model architecture.'),
     )
     @magicgui(
@@ -135,6 +136,7 @@ def training_widget():
         use_cem,
         finetune_layer,
         iterations,
+        patch_size,
         custom_config
     ):
         train_dir = str(train_dir)
@@ -144,6 +146,8 @@ def training_widget():
             eval_dir = None
 
         assert os.path.isdir(train_dir)
+        if model_arch == 'PanopticBiFPN':
+            assert patch_size % 128 == 0, "Patch size must be divisible by 128 to use PanopticBiFPN!"
 
         # extract class_names, labels, and thing list
         class_names = {}
@@ -172,6 +176,7 @@ def training_widget():
         config['DATASET']['class_names'] = class_names
         config['DATASET']['labels'] = list(class_names.keys())
         config['DATASET']['thing_list'] = thing_list
+        config['EVAL']['engine_params']['thing_list'] = thing_list
 
         # training on mac breaks with more than 1 data worker
         if platform.system() == 'Darwin':
@@ -202,6 +207,11 @@ def training_widget():
             epochs = int(iterations // (n_imgs // bsz))
 
         print(f'Found {n_imgs} images for training. Training for {epochs} epochs.')
+
+        # update the patch size in augmentations if parameters are null
+        for aug in config['TRAIN']['augmentations']:
+            for k in aug.keys():
+                aug[k] = patch_size if ('height' in k or 'width' in k) and aug.get(k) is None else aug[k]
 
         config['TRAIN']['save_freq'] = epochs // 5
         config['EVAL']['eval_dir'] = eval_dir

@@ -54,8 +54,8 @@ TRAIN:
 
   augmentations:
     - { aug: "RandomScale", scale_limit: [ -0.9, 1 ]}
-    - { aug: "PadIfNeeded", min_height: 256, min_width: 256, border_mode: 0 }
-    - { aug: "RandomCrop", height: 256, width: 256}
+    - { aug: "PadIfNeeded", min_height: null, min_width: null, border_mode: 0 }
+    - { aug: "RandomCrop", height: null, width: null}
     - { aug: "Rotate", limit: 180, border_mode: 0 }
     - { aug: "RandomBrightnessContrast", brightness_limit: 0.3, contrast_limit: 0.3 }
     - { aug: "HorizontalFlip" }
@@ -74,7 +74,7 @@ EVAL:
   # parameters needed for inference
   engine: "PanopticDeepLabEngine"
   engine_params:
-    thing_list: [ 1 ]
+    thing_list: null
     label_divisor: 1000
     stuff_area: 64
     void_label: 0

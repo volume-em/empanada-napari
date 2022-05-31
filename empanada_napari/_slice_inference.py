@@ -9,7 +9,7 @@ from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QPlainTextEdit
 
 import napari
 from napari import Viewer
-from napari.layers import Image, Shapes
+from napari.layers import Image, Labels, Shapes
 from magicgui import magicgui
 
 #from magicgui.tqdm import tqdm
@@ -88,6 +88,7 @@ def test_widget():
         semantic_only=dict(widget_type='CheckBox', text='Semantic only', value=False, tooltip='Only run semantic segmentation for all classes.'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class'),
         batch_mode=dict(widget_type='CheckBox', text='Batch mode', value=False, tooltip='If checked, each image in a stack is segmented independently.'),
+        output_to_layer=dict(widget_type='CheckBox', text='Output to layer', value=False, tooltip='If checked, the segmentation is output to the selected output layer.'),
     )
 
     gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0')
@@ -113,8 +114,15 @@ def test_widget():
         maximum_objects_per_class,
         batch_mode,
         use_gpu,
-        use_quantized
+        use_quantized,
+        output_to_layer,
+        output_layer: Labels
     ):
+        if output_to_layer:
+            assert output_layer is not None, "Must select an output layer or uncheck Output to layer!"
+            assert output_layer.data.shape == image_layer.data.shape, \
+            "Output layer must have the same shape as the input image."
+
         # load the model config
         model_config_name = model_config
         model_config = read_yaml(model_configs[model_config])
@@ -158,7 +166,6 @@ def test_widget():
             )
 
         def _get_current_slice(image_layer):
-            axis = viewer.dims.order[0]
             cursor_pos = viewer.cursor.position
 
             # handle multiscale by taking highest resolution level
@@ -167,7 +174,18 @@ def test_widget():
                 print(f'Multiscale image selected, using highest resolution level!')
                 image = image[0]
 
-            if image.ndim == 3:
+            if image.ndim == 4:
+                axis = tuple(viewer.dims.order[:2])
+                plane = (
+                    int(image_layer.world_to_data(cursor_pos)[axis[0]]),
+                    int(image_layer.world_to_data(cursor_pos)[axis[1]])
+                )
+
+                slices = [slice(None), slice(None), slice(None), slice(None)]
+                slices[axis[0]] = plane[0]
+                slices[axis[1]] = plane[1]
+            elif image.ndim == 3:
+                axis = viewer.dims.order[0]
                 plane = int(image_layer.world_to_data(cursor_pos)[axis])
 
                 slices = [slice(None), slice(None), slice(None)]
@@ -183,24 +201,57 @@ def test_widget():
             seg, axis, plane = args[0]
 
             if axis is not None and plane is not None:
-                seg = np.expand_dims(seg, axis=axis)
-                translate = [0, 0, 0]
-                translate[axis] = plane
+                if isinstance(axis, tuple) and isinstance(plane, tuple):
+                    seg = np.expand_dims(seg, axis=axis)
+                    translate = [0, 0, 0, 0]
+                    translate[axis[0]] = plane[0]
+                    translate[axis[1]] = plane[1]
+                else:
+                    seg = np.expand_dims(seg, axis=axis)
+                    translate = [0, 0, 0]
+                    translate[axis] = plane
             else:
                 translate = [0, 0]
 
             viewer.add_labels(seg, name=f'empanada_seg_2d', visible=True, translate=tuple(translate))
 
+        def _store_test_result(*args):
+            seg, axis, plane = args[0]
+
+            if axis is not None and plane is not None:
+                if isinstance(axis, tuple) and isinstance(plane, tuple):
+                    # 4D flipbook case
+                    slices = [slice(None), slice(None), slice(None), slice(None)]
+                    slices[axis[0]] = plane[0]
+                    slices[axis[1]] = plane[1]
+                    output_layer.data[tuple(slices)] = seg
+                else:
+                    # 3D case
+                    slices = [slice(None), slice(None), slice(None)]
+                    slices[axis] = plane
+                    output_layer.data[tuple(slices)] = seg
+            else:
+                # 2D case
+                output_layer.data = seg
+
+            output_layer.visible = False 
+            output_layer.visible = True
+
         # load data for currently viewer slice of chosen image layer
         if not batch_mode:
             image2d, axis, plane = _get_current_slice(image_layer)
+            print('Current slice', image2d.shape, axis, plane)
             if type(image2d) == da.core.Array:
                 image2d = image2d.compute()
 
             test_worker = run_model(widget.engine, image2d, axis, plane)
-            test_worker.returned.connect(_show_test_result)
+            if output_to_layer:
+                test_worker.returned.connect(_store_test_result)
+            else:
+                test_worker.returned.connect(_show_test_result)
             test_worker.start()
         else:
+            assert not output_to_layer, "Batch mode is not compatible with output to layer!"
             test_worker = run_model_batch(widget.engine, image_layer.data)
             test_worker.yielded.connect(_show_test_result)
             test_worker.start()

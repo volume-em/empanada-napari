@@ -162,7 +162,7 @@ def pick_patches():
         patch_size=dict(widget_type='SpinBox', value=256, min=224, max=512, step=16, label='Patch size in pixels'),
         pyramid_level=dict(widget_type='ComboBox', choices=list(range(9)), value=0, label='Multiscale image level', tooltip='If image layer is a multiscale image, pick the resolution level for patches. Assumes 2x scaling between levels.'),
         pick_points_only=dict(widget_type='CheckBox', text='Pick all points', value=False, tooltip='Overwrites the number of patches and creates patches for all points.'),
-        isotropic=dict(widget_type='CheckBox', text='Pick from xy, xz, or yz', value=False, tooltip='If a image with isotropic voxels, pick patches from all planes.'),
+        isotropic=dict(widget_type='CheckBox', text='Pick from xy, xz, or yz', value=False, tooltip='If a 3D image with isotropic voxels, pick patches from all planes.'),
         is_2d_stack=dict(widget_type='CheckBox', text='Image is 2D stack', value=False, tooltip='Check if image layer is a stack of 2D images.')
     )
 

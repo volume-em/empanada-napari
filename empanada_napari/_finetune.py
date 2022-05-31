@@ -45,6 +45,7 @@ def finetuning_widget():
         finetune_model=dict(widget_type='ComboBox', label='Model to finetune', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='model to use for finetuning'),
         finetune_layer=dict(widget_type='ComboBox', label='Finetunable layers', choices=['none', 'stage4', 'stage3', 'stage2', 'stage1', 'all'], value='none', tooltip='layers to finetune in the encoder'),
         iterations=dict(widget_type='SpinBox', value=100, min=100, max=5000, step=100, label='Iterations', tooltip='number of iterations for finetuning'),
+        patch_size=dict(widget_type='SpinBox', value=256, min=224, max=512, step=16, label='Patch size in pixels'),
         custom_config=dict(widget_type='FileEdit', label='Custom config (optional)', value='default config', tooltip='path to a custom empanada training config file; will not overwrite other parameters.'),
     )
 
@@ -64,6 +65,7 @@ def finetuning_widget():
         finetune_model,
         finetune_layer,
         iterations,
+        patch_size,
         custom_config,
     ):
         train_dir = str(train_dir)
@@ -110,6 +112,11 @@ def finetuning_widget():
             epochs = int(iterations // (n_imgs // bsz))
 
         print(f'Found {n_imgs} images for training. Training for {epochs} epochs.')
+
+        # update the patch size in augmentations if parameters are null
+        for aug in config['TRAIN']['augmentations']:
+            for k in aug.keys():
+                aug[k] = patch_size if ('height' in k or 'width' in k) and aug.get(k) is None else aug[k]
 
         config['TRAIN']['save_freq'] = epochs // 5
         config['EVAL']['eval_dir'] = eval_dir
