@@ -333,7 +333,7 @@ def store_dataset():
             if msk.max() <= 255:
                 dtype = np.uint8
             else:
-                dtype = np.uint32
+                dtype = np.int32
 
             io.imsave(os.path.join(outdir, f'{prefix}/masks/{fname}'), msk.astype(dtype), check_contrast=False)
 
