@@ -33,8 +33,11 @@ contributions:
     title: Train a model
     python_name: empanada_napari._train:training_widget
   - id: empanada-napari.register_model_widget
-    title: Create Register new model
+    title: Register a model
     python_name: empanada_napari._register_model:register_model_widget
+  - id: empanada-napari.get_info_widget
+    title: Get model info
+    python_name: empanada_napari._finetune:get_info_widget
 
   widgets:
   - command: empanada-napari.test_widget
@@ -58,4 +61,6 @@ contributions:
   - command: empanada-napari.training_widget
     display_name: Train a model
   - command: empanada-napari.register_model_widget
-    display_name: Register new model
+    display_name: Register a model
+  - command: empanada-napari.get_info_widget
+    display_name: Get model info

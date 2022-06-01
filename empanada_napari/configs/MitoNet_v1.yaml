@@ -15,8 +15,12 @@ norms:
   mean: 0.57571
   std: 0.12765
 
-# parameters that were used during training
-# that should be adopted for finetuning
+description: >
+  MitoNet_v1 was trained on the large CEM-MitoLab dataset and is a generalist
+  for mitochondrial segmentation. The underlying architecture is PanopticDeeplab.
+  This model is fairly large but powerful. If GPU memory is a limitation, try
+  using MitoNet_v1_mini instead. Read the preprint: https://www.biorxiv.org/content/10.1101/2022.03.17.484806
+
 FINETUNE:
   criterion: PanopticLoss
   criterion_params:

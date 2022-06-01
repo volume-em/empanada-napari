@@ -154,6 +154,58 @@ def finetuning_widget():
 
     return widget
 
+def get_info_widget():
+    from empanada.config_loaders import load_config
+    from empanada_napari.utils import get_configs
+    model_configs = get_configs()
+
+    gui_params = dict(
+        model_name=dict(widget_type='ComboBox', label='Model name', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='model to get info for'),
+    )
+    @magicgui(
+        call_button='Print info to terminal',
+        layout='vertical',
+        **gui_params
+    )
+    def widget(model_name):
+        config = load_config(model_configs[model_name])
+
+        # neatly print everything the user needs to read
+        print('\n')
+        print('MODEL INFORMATION')
+        print('-----------------')
+        print('Model name:', model_name)
+        print('Description:\n', config.get('description'))
+
+        # extract the class names list
+        thing_list = config['thing_list']
+        class_names = config['class_names']
+        pf = config['padding_factor']
+
+        ds_class = config['FINETUNE']['dataset_class']
+        if ds_class == 'PanopticDataset':
+            label_divisor = config['FINETUNE']['dataset_params']['label_divisor']
+        else:
+            label_divisor = None
+
+        print('Finetuning instructions: \n')
+        print(f'  The size of annotated patches should be divisible by {pf}')
+        print(f'  Classes to annotate:')
+        for cl,cn in class_names.items():
+            kind = 'instance' if cl in thing_list else 'semantic'
+            if label_divisor is not None:
+                start_label = (cl * label_divisor) + 1
+            else:
+                start_label = 1
+
+            print(f'    Class {cl} ({cn}) requires {kind} segmentation, start annotation at label {start_label}')
+
+    return widget
+
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def finetuning_dock_widget():
     return finetuning_widget, {'name': 'Finetune a model'}
+
+@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+def get_info_dock_widget():
+    return get_info, {'name': 'Get model info'}

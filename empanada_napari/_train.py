@@ -89,6 +89,7 @@ def training_widget():
             'thing_list': config['DATASET']['thing_list'],
             'labels': config['DATASET']['labels'],
             'class_names': config['DATASET']['class_names'],
+            'description': config['description']
             'FINETUNE': finetune_params
         }
 
@@ -113,6 +114,8 @@ def training_widget():
         iterations=dict(widget_type='SpinBox', value=100, min=100, max=10000, step=100, label='Iterations', tooltip='number of iterations for model training'),
         patch_size=dict(widget_type='SpinBox', value=256, min=224, max=512, step=16, label='Patch size in pixels'),
         custom_config=dict(widget_type='FileEdit', label='Custom config (optional)', value='default config', tooltip='path to a custom empanada training config file; will only overwrite the model architecture.'),
+
+        description=dict(widget_type='TextEdit', label='Description (optional)', tooltip='Description of the model training data, purpose, links to more info, etc.'),
     )
     @magicgui(
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
@@ -137,7 +140,9 @@ def training_widget():
         finetune_layer,
         iterations,
         patch_size,
-        custom_config
+        custom_config,
+
+        description
     ):
         train_dir = str(train_dir)
         model_dir = str(model_dir)
@@ -177,6 +182,8 @@ def training_widget():
         config['DATASET']['labels'] = list(class_names.keys())
         config['DATASET']['thing_list'] = thing_list
         config['EVAL']['engine_params']['thing_list'] = thing_list
+
+        config['description'] = description
 
         # training on mac breaks with more than 1 data worker
         if platform.system() == 'Darwin':
