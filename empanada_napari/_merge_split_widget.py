@@ -1,7 +1,6 @@
 from napari_plugin_engine import napari_hook_implementation
-from qtpy.QtWidgets import QWidget, QHBoxLayout, QPushButton
-from magicgui import magic_factory, magicgui
-from empanada.array_utils import merge_boxes, crop_and_binarize
+from magicgui import magicgui
+from empanada.array_utils import crop_and_binarize
 from skimage.measure import regionprops
 from scipy import ndimage as ndi
 from skimage.segmentation import watershed
@@ -65,7 +64,6 @@ def merge_labels():
         viewer: napari.viewer.Viewer,
         labels_layer: napari.layers.Labels,
         points_layer: napari.layers.Points,
-
     ):
         if points_layer is None:
             points_layer = viewer.add_points([])

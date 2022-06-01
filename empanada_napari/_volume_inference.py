@@ -60,6 +60,7 @@ def volume_inference_widget():
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
         store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Zarr Directory (optional)', mode='d', tooltip='location to store segmentations on disk'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0'),
+        use_quantized=dict(widget_type='CheckBox', text='Use quantized model', value=device_count() == 0, tooltip='If checked, use the quantized model for faster CPU inference.'),
         multigpu=dict(widget_type='CheckBox', text='Multi GPU', value=False, tooltip='If checked, run on all available GPUs'),
 
         parameters2d_head=dict(widget_type='Label', label=f'<h3 text-align="center">2D Parameters</h3>'),
@@ -90,6 +91,7 @@ def volume_inference_widget():
         model_config,
         store_dir,
         use_gpu,
+        use_quantized,
         multigpu,
 
         parameters2d_head,
@@ -129,10 +131,13 @@ def volume_inference_widget():
             store_url = os.path.join(store_dir, f'{image_layer.name}_{model_config_name}_napari.zarr')
 
         if not hasattr(widget, 'last_config'):
-            widget.last_config = model_config
+            widget.last_config = model_config_name
 
         if not hasattr(widget, 'using_gpu'):
             widget.using_gpu = use_gpu
+
+        if not hasattr(widget, 'using_quantized'):
+            widget.using_quantized = use_quantized
 
         if multigpu:
             widget.engine = MultiGPUEngine3d(
@@ -150,9 +155,9 @@ def volume_inference_widget():
                 save_panoptic=return_panoptic,
                 store_url=store_url
             )
-            widget.last_config = model_config
+            widget.last_config = model_config_name
         # conditions where model needs to be (re)loaded
-        elif not hasattr(widget, 'engine') or widget.last_config != model_config or use_gpu != widget.using_gpu:
+        elif not hasattr(widget, 'engine') or widget.last_config != model_config_name or use_gpu != widget.using_gpu or use_quantized != widget.using_quantized:
             widget.engine = Engine3d(
                 model_config,
                 inference_scale=downsampling,
@@ -165,11 +170,12 @@ def volume_inference_widget():
                 fine_boundaries=fine_boundaries,
                 label_divisor=maximum_objects_per_class,
                 use_gpu=use_gpu,
+                use_quantized=use_quantized,
                 semantic_only=semantic_only,
                 save_panoptic=return_panoptic,
                 store_url=store_url
             )
-            widget.last_config = model_config
+            widget.last_config = model_config_name
             widget.using_gpu = use_gpu
         else:
             # update the parameters

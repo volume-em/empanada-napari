@@ -12,16 +12,16 @@ from tqdm import tqdm
 
 from empanada.data import VolumeDataset
 from empanada.inference import filters
-from empanada.inference.engines import PanopticDeepLabRenderEngine3d
+from empanada.inference.engines import PanopticDeepLabRenderEngine
 from empanada.inference.tracker import InstanceTracker
 from empanada.inference.postprocess import factor_pad
 from empanada.inference.patterns import *
 
 from napari.qt.threading import thread_worker
 
-from empanada_napari.utils import Preprocessor
+from empanada_napari.utils import Preprocessor, load_model_to_device
 
-MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada/configs')
+MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
 torch.hub.set_dir(MODEL_DIR)
 
 def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
@@ -32,19 +32,8 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
     dist.init_process_group(backend='nccl', init_method='tcp://localhost:10001',
                             world_size=config['world_size'], rank=rank)
 
-    # load models and set engine class from file or url
-    if os.path.isfile(config[f'base_model_gpu']):
-        base_model = torch.jit.load(config[f'base_model_gpu'])
-    else:
-        base_model = torch.hub.load_state_dict_from_url(config[f'base_model_gpu'])
-
-    if os.path.isfile(config[f'render_model_gpu']):
-        render_model = torch.jit.load(config[f'render_model_gpu'])
-    else:
-        render_model = torch.hub.load_state_dict_from_url(config[f'render_model_gpu'])
-
-    engine_cls = PanopticDeepLabRenderEngine3d
-    torch.cuda.set_device(config['gpu'])
+    engine_cls = PanopticDeepLabRenderEngine
+    model = load_model_to_device(config['model_url'], torch.device(f'cuda:{gpu}'))
 
     preprocessor = Preprocessor(**config['norms'])
 
@@ -80,10 +69,7 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         matcher_proc.start()
 
     # create the inference engine
-    base_model = base_model.to(f'cuda:{gpu}')
-    render_model = render_model.to(f'cuda:{gpu}')
-    render_models = {'sem_logits': render_model}
-    inference_engine = engine_cls(base_model, render_models, **config['engine_params'])
+    inference_engine = engine_cls(model, **config['engine_params'])
 
     n = 0
     iterator = dataloader if rank != 0 else tqdm(dataloader, total=len(dataloader))
@@ -95,17 +81,9 @@ def main_worker(gpu, volume, axis_name, rle_stack, rle_out, config):
         image = factor_pad(image, config['padding_factor'])
 
         output = inference_engine.infer(image)
+        sem = output['sem']
         instance_cells = inference_engine.get_instance_cells(
             output['ctr_hmp'], output['offsets'], upsampling
-        )
-
-        # correctly resize the sem and instance_cells
-        coarse_sem_logits = output['sem_logits']
-        sem_logits = coarse_sem_logits.clone()
-        features = output['semantic_x']
-        sem, _ = inference_engine.upsample_logits(
-            sem_logits, coarse_sem_logits,
-            features, upsampling * 4
         )
 
         # get median semantic seg
@@ -164,13 +142,9 @@ class MultiGPUEngine3d:
         if not torch.cuda.device_count() > 1:
             raise Exception(f'MultiGPU inference requires multiple GPUs! Run torch.cuda.device_count()')
 
-        device = 'gpu'
-
-        # load the base and render models
         self.labels = model_config['labels']
         self.config = model_config
-        self.config['base_model_url'] = model_config[f'base_model_{device}']
-        self.config['render_model_url'] = model_config[f'render_model_{device}']
+        self.config['model_url'] = model_config['model']
 
         self.config['engine_params'] = {}
         if semantic_only:
@@ -262,6 +236,14 @@ class MultiGPUEngine3d:
             args=(volume, axis_name, rle_stack, rle_out, self.config),
             join=False
         )
+
+        # NOTE: when using the spawn context, error messages either
+        # don't show up or are unhelpful, comment out the lines above
+        # and use this spawn command for all debugging
+        #mp.spawn(
+        #    main_worker, nprocs=self.config['world_size'],
+        #    args=(volume, axis_name, [], [], self.config)
+        #)
 
         # grab the zarr stack that was filled in
         rle_stack = rle_out.get()[0]

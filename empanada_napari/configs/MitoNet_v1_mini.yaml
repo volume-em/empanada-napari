@@ -1,0 +1,46 @@
+class_names:
+  1: mito
+
+labels:
+- 1
+
+thing_list:
+- 1
+
+model: https://www.dropbox.com/s/71s03kwh336t1es/MitoNet_mini.pth?dl=1
+model_quantized: https://www.dropbox.com/s/y6i90ogv4k2stch/MitoNet_mini_quantized.pth?dl=1
+
+padding_factor: 128
+norms:
+  mean: 0.57571
+  std: 0.12765
+
+description: >
+  MitoNet_v1_mini was trained on the large CEM-MitoLab dataset and is a generalist
+  for mitochondrial segmentation. The underlying architecture is PanopticBiFPN,
+  which is very parameter efficient and trains and predicts slightly faster than
+  the full MitoNet model. Read the preprint: https://www.biorxiv.org/content/10.1101/2022.03.17.484806
+
+# parameters that were used during training
+# that should be adopted for finetuning
+FINETUNE:
+  criterion: PanopticLoss
+  criterion_params:
+    ce_weight: 1
+    l1_weight: 0.01
+    mse_weight: 200
+    pr_weight: 1
+    top_k_percent: 0.2
+  dataset_class: SingleClassInstanceDataset
+  dataset_params:
+    weight_gamma: 0.7
+  engine: PanopticDeepLabEngine
+  engine_params:
+    confidence_thr: 0.5
+    label_divisor: 1000
+    nms_kernel: 7
+    nms_threshold: 0.1
+    stuff_area: 64
+    thing_list:
+    - 1
+    void_label: 0

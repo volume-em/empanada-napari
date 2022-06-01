@@ -20,9 +20,9 @@ from empanada.array_utils import put
 from empanada.inference.patterns import *
 
 from napari.qt.threading import thread_worker
-from empanada_napari.utils import Preprocessor
+from empanada_napari.utils import Preprocessor, load_model_to_device
 
-MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada/configs')
+MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
 torch.hub.set_dir(MODEL_DIR)
 
 def instance_relabel(tracker):
@@ -41,6 +41,7 @@ def instance_relabel(tracker):
         # TODO: technically this could break the zarr_fill_instances function
         # if an object has a pixel in the bottom right corner of the Nth z slice
         # and a pixel in the top left corner of the N+1th z slice
+        # only applies to yz axis
         instances[instance_id] = {}
         instances[instance_id]['box'] = instance_attr['box']
         instances[instance_id]['starts'] = runs_cat[:, 0]
@@ -141,7 +142,7 @@ def tracker_consensus(
             filters.remove_small_objects(consensus_tracker, min_size=min_size)
             filters.remove_pancakes(consensus_tracker, min_span=min_extent)
         else:
-            consensus_tracker = create_semantic_consensus(class_trackers, args.pixel_vote_thr)
+            consensus_tracker = create_semantic_consensus(class_trackers, pixel_vote_thr)
 
         print(f'Total {class_name} objects {len(consensus_tracker.instances.keys())}')
 
@@ -170,32 +171,18 @@ class Engine2d:
         confidence_thr=0.3,
         semantic_only=False,
         fine_boundaries=False,
-        use_gpu=True
+        use_gpu=True,
+        use_quantized=False
     ):
         # check whether GPU is available
-        if torch.cuda.is_available() and use_gpu:
-            device = 'gpu'
+        device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
+        if use_quantized and str(device) == 'cpu' and model_config.get('model_quantized') is not None:
+            model_url = model_config['model_quantized']
         else:
-            print('Testing on CPU')
-            device = 'cpu'
+            model_url = model_config['model']
 
-        # load the base and render models from file or url
-        if os.path.isfile(model_config[f'base_model_{device}']):
-            print(f'base_model_{device}', model_config[f'base_model_{device}'])
-            base_model = torch.jit.load(model_config[f'base_model_{device}'])
-        else:
-            base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
-
-        if os.path.isfile(model_config[f'render_model_{device}']):
-            print(f'render_model_{device}', model_config[f'render_model_{device}'])
-            render_model = torch.jit.load(model_config[f'render_model_{device}'])
-        else:
-            render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
-
-        # move them to gpu if needed
-        if device == 'gpu':
-            base_model = base_model.cuda()
-            render_model = render_model.cuda()
+        model = load_model_to_device(model_url, device)
+        model = model.to(device)
 
         self.thing_list = model_config['thing_list']
         self.labels = model_config['labels']
@@ -211,10 +198,8 @@ class Engine2d:
             thing_list = self.thing_list
 
         # create the inference engine
-        render_models = {'sem_logits': render_model}
         self.engine = PanopticDeepLabRenderEngine(
-            base_model, render_models,
-            thing_list=thing_list,
+            model, thing_list=thing_list,
             label_divisor=label_divisor,
             nms_threshold=nms_threshold,
             nms_kernel=nms_kernel,
@@ -270,7 +255,7 @@ class Engine2d:
 
         # engine handles upsampling and padding
         pan_seg = self.engine(image, size, upsampling=self.inference_scale)
-        return pan_seg.squeeze().cpu().numpy()
+        return pan_seg.squeeze().cpu().numpy().astype(np.uint32)
 
 class Engine3d:
     r"""Engine for 3D ortho-plane and stack inference"""
@@ -291,30 +276,20 @@ class Engine3d:
         fine_boundaries=False,
         semantic_only=False,
         use_gpu=True,
+        use_quantized=False,
         store_url=None,
         save_panoptic=False
     ):
         # check whether GPU is available
-        if torch.cuda.is_available() and use_gpu:
-            device = 'gpu'
+        # check whether GPU is available
+        device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
+        if use_quantized and str(device) == 'cpu' and model_config.get('model_quantized') is not None:
+            model_url = model_config['model_quantized']
         else:
-            device = 'cpu'
+            model_url = model_config['model']
 
-        # load the base and render models from file or url
-        if os.path.isfile(model_config[f'base_model_{device}']):
-            base_model = torch.jit.load(model_config[f'base_model_{device}'])
-        else:
-            base_model = torch.hub.load_state_dict_from_url(model_config[f'base_model_{device}'])
-
-        if os.path.isfile(model_config[f'render_model_{device}']):
-            render_model = torch.jit.load(model_config[f'render_model_{device}'])
-        else:
-            render_model = torch.hub.load_state_dict_from_url(model_config[f'render_model_{device}'])
-
-        # move them to gpu if needed
-        if device == 'gpu':
-            base_model = base_model.cuda()
-            render_model = render_model.cuda()
+        model = load_model_to_device(model_url, device)
+        model = model.to(device)
 
         self.model_config = model_config
         self.labels = model_config['labels']
@@ -330,10 +305,8 @@ class Engine3d:
             self.thing_list = model_config['thing_list']
 
         # create the inference engine
-        render_models = {'sem_logits': render_model}
         self.engine = PanopticDeepLabRenderEngine3d(
-            base_model, render_models,
-            thing_list=self.thing_list,
+            model, thing_list=self.thing_list,
             median_kernel_size=median_kernel_size,
             label_divisor=label_divisor,
             nms_threshold=nms_threshold,
@@ -497,7 +470,7 @@ class Engine3d:
                 pan_seg = pan_seg.squeeze().cpu().numpy()
                 queue.put(pan_seg)
 
-        final_segs = self.engine.end()
+        final_segs = self.engine.end(self.inference_scale)
         if final_segs:
             for i, pan_seg in enumerate(final_segs):
                 pan_seg = pan_seg.squeeze().cpu().numpy()

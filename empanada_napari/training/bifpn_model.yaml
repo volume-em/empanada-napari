@@ -1,0 +1,15 @@
+arch: "PanopticBiFPNPR"
+encoder: "resnet50"
+num_classes: null
+fpn_dim: 128
+fpn_layers: 3
+ins_decoder: True
+depthwise: True
+
+# point_rend arguments
+num_fc: 3
+train_num_points: 1024
+oversample_ratio: 3
+importance_sample_ratio: 0.75
+subdivision_steps: 2
+subdivision_num_points: 8192

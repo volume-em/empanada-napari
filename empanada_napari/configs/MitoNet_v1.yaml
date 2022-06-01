@@ -1,20 +1,44 @@
-base_model_cpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_base_cpu.pth?download=1"
-render_model_cpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_render_cpu.pth?download=1"
-
-base_model_gpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_base_gpu.pth?download=1"
-render_model_gpu: "https://zenodo.org/record/6327742/files/MitoNet_v1_render_gpu.pth?download=1"
-
 class_names:
-- mito
+  1: mito
 
 labels:
 - 1
 
-norms:
-  mean: 0.57287007
-  std: 0.12740536
-
-padding_factor: 16
-
 thing_list:
 - 1
+
+model: "https://www.dropbox.com/s/crp3jhr55ie3d3s/MitoNet_v2.pth?dl=1"
+model_quantized: "https://www.dropbox.com/s/kpen8o7kbq2qpez/MitoNet_v2_quantized.pth?dl=1"
+
+padding_factor: 16
+norms:
+  mean: 0.57571
+  std: 0.12765
+
+description: >
+  MitoNet_v1 was trained on the large CEM-MitoLab dataset and is a generalist
+  for mitochondrial segmentation. The underlying architecture is PanopticDeeplab.
+  This model is fairly large but powerful. If GPU memory is a limitation, try
+  using MitoNet_v1_mini instead. Read the preprint: https://www.biorxiv.org/content/10.1101/2022.03.17.484806
+
+FINETUNE:
+  criterion: PanopticLoss
+  criterion_params:
+    ce_weight: 1
+    l1_weight: 0.01
+    mse_weight: 200
+    pr_weight: 1
+    top_k_percent: 0.2
+  dataset_class: SingleClassInstanceDataset
+  dataset_params:
+    weight_gamma: 0.7
+  engine: PanopticDeepLabEngine
+  engine_params:
+    confidence_thr: 0.5
+    label_divisor: 1000
+    nms_kernel: 7
+    nms_threshold: 0.1
+    stuff_area: 64
+    thing_list:
+    - 1
+    void_label: 0

@@ -1,0 +1,20 @@
+arch: "PanopticDeepLabPR"
+encoder: "resnet50"
+num_classes: null
+stage4_stride: 16
+decoder_channels: 256
+low_level_stages: [ 1 ]
+low_level_channels_project: [ 32 ]
+atrous_rates: [ 2, 4, 6 ]
+aspp_channels: null
+aspp_dropout: 0.5
+ins_decoder: True
+ins_ratio: 0.5
+
+# point_rend arguments
+num_fc: 3
+train_num_points: 1024
+oversample_ratio: 3
+importance_sample_ratio: 0.75
+subdivision_steps: 2
+subdivision_num_points: 8192

@@ -1,0 +1,108 @@
+# All variables that are set to null are overwriten by parameters set in the GUI
+# and should not be changed. Everything else is customizable.
+ 
+# For detailed notes see:
+# https://empanada.readthedocs.io/en/latest/tutorial/config.html
+
+model_name: null
+
+DATASET:
+  class_names: null
+  labels: null
+  thing_list: null
+  norms: null
+
+MODEL:
+  arch: "PanopticBiFPNPR"
+  encoder: "resnet50"
+  num_classes: null
+  fpn_dim: 128
+  fpn_layers: 3
+  ins_decoder: True
+  depthwise: True
+
+  # point_rend arguments
+  num_fc: 3
+  train_num_points: 1024
+  oversample_ratio: 3
+  importance_sample_ratio: 0.75
+  subdivision_steps: 2
+  subdivision_num_points: 8192
+
+TRAIN:
+  # CUSTOMIZABLE PARAMETERS
+  # set the lr schedule
+  lr_schedule: "OneCycleLR"
+  schedule_params:
+    max_lr: 0.003
+    epochs: null
+    steps_per_epoch: -1
+    pct_start: 0.3
+
+  # setup the optimizer
+  amp: True  # automatic mixed precision
+  optimizer: "AdamW"
+  optimizer_params:
+    weight_decay: 0.1
+
+  # criterion parameters
+  criterion: "PanopticLoss"
+  criterion_params:
+    ce_weight: 1
+    mse_weight: 200
+    l1_weight: 0.01
+    top_k_percent: 0.2
+    pr_weight: 1
+
+  # performance metrics
+  print_freq: 50
+  metrics:
+      - { metric: "IoU", name: "semantic_iou", labels: null, output_key: "sem_logits",  target_key: "sem"}
+
+  # data loading parameters
+  batch_size: 16
+  workers: 4
+
+  dataset_class: null
+  dataset_params:
+      weight_gamma: 0.0
+
+  augmentations:
+    - { aug: "RandomScale", scale_limit: [ -0.9, 1 ]}
+    - { aug: "PadIfNeeded", min_height: 256, min_width: 256, border_mode: 0 }
+    - { aug: "RandomCrop", height: 256, width: 256}
+    - { aug: "Rotate", limit: 180, border_mode: 0 }
+    - { aug: "RandomBrightnessContrast", brightness_limit: 0.3, contrast_limit: 0.3 }
+    - { aug: "HorizontalFlip" }
+    - { aug: "VerticalFlip" }
+
+  # NOT CUSTOMIZABLE GUI PARAMETERS
+  train_dir: null
+  additional_train_dirs: null
+  model_dir: null
+  save_freq: null
+
+  # pretraining parameters
+  encoder_pretraining: null
+  finetune_layer: null
+
+EVAL:
+  eval_dir: null
+  epochs_per_eval: null
+
+  # parameters needed for eval_metrics
+  metrics:
+      - { metric: "IoU", name: "semantic_iou", labels: null, output_key: "sem_logits",  target_key: "sem"}
+      - { metric: "PQ", name: "pq", labels: null, label_divisor: 1000, output_key: "pan_seg",  target_key: "pan_seg"}
+      - { metric: "F1", name: "f1_50", labels: null, label_divisor: 1000, iou_thr: 0.5, output_key: "pan_seg",  target_key: "pan_seg"}
+
+  # parameters needed for inference
+  engine: "PanopticDeepLabEngine"
+  engine_params:
+    thing_list: [ 1 ]
+    label_divisor: 1000
+    stuff_area: 64
+    void_label: 0
+    nms_threshold: 0.1
+    nms_kernel: 7
+    confidence_thr: 0.5

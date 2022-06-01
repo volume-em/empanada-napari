@@ -1,0 +1,61 @@
+# All variables that are set to null are overwriten by parameters set in the GUI
+# and should not be changed. Everything else is customizable.
+
+# For detailed notes see:
+# https://empanada.readthedocs.io/en/latest/tutorial/config.html
+
+model_name: null
+
+TRAIN:
+  # CUSTOMIZABLE PARAMETERS
+  lr_schedule: "OneCycleLR"
+  schedule_params:
+    max_lr: 0.003
+    epochs: null
+    steps_per_epoch: -1
+    pct_start: 0.3
+
+  # setup the optimizer
+  amp: True  # automatic mixed precision
+  optimizer: "AdamW"
+  optimizer_params:
+    weight_decay: 0.1
+
+  # performance metrics
+  print_freq: 50
+  metrics:
+      - { metric: "IoU", name: "semantic_iou", labels: null, output_key: "sem_logits",  target_key: "sem"}
+
+  # data loading parameters
+  batch_size: 16
+  workers: 4
+
+  # augmentations from Albumentations library
+  # https://albumentations.ai/docs/api_reference/augmentations/transforms/
+  augmentations:
+    - { aug: "RandomScale", scale_limit: [ -0.9, 1 ]}
+    - { aug: "PadIfNeeded", min_height: 256, min_width: 256, border_mode: 0 }
+    - { aug: "RandomCrop", height: 256, width: 256}
+    - { aug: "Rotate", limit: 180, border_mode: 0 }
+    - { aug: "RandomBrightnessContrast", brightness_limit: 0.3, contrast_limit: 0.3 }
+    - { aug: "HorizontalFlip" }
+    - { aug: "VerticalFlip" }
+
+  # NOT CUSTOMIZABLE GUI PARAMETERS
+  train_dir: null
+  additional_train_dirs: null
+
+  model_dir: null
+  save_freq: null
+
+  finetune_layer: null
+
+EVAL:
+  eval_dir: null
+  epochs_per_eval: null
+
+  # parameters needed for eval_metrics
+  metrics:
+      - { metric: "IoU", name: "semantic_iou", labels: null, output_key: "sem_logits",  target_key: "sem"}
+      - { metric: "PQ", name: "pq", labels: null, label_divisor: 1000, output_key: "pan_seg",  target_key: "pan_seg"}
+      - { metric: "F1", name: "f1_50", labels: null, label_divisor: 1000, iou_thr: 0.5, output_key: "pan_seg",  target_key: "pan_seg"}
