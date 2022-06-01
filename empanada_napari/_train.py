@@ -89,7 +89,7 @@ def training_widget():
             'thing_list': config['DATASET']['thing_list'],
             'labels': config['DATASET']['labels'],
             'class_names': config['DATASET']['class_names'],
-            'description': config['description']
+            'description': config['description'],
             'FINETUNE': finetune_params
         }
 
