@@ -159,6 +159,10 @@ def training_widget():
         thing_list = []
         for seg_class in label_text.split('\n'):
             class_id, class_name, class_kind = seg_class.split(',')
+            class_id = class_id.strip()
+            class_name = class_name.strip()
+            class_kind = class_kind.strip()
+
             assert class_kind in ['semantic', 'instance'], "Class kind must be 'semantic' or 'instance'"
             class_names[int(class_id)] = class_name
             if class_kind == 'instance':

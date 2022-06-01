@@ -190,6 +190,7 @@ def get_info_widget():
 
         print('Finetuning instructions: \n')
         print(f'  The size of annotated patches should be divisible by {pf}')
+        print(f'  Use a label divisor of {label_divisor}.')
         print(f'  Classes to annotate:')
         for cl,cn in class_names.items():
             kind = 'instance' if cl in thing_list else 'semantic'
