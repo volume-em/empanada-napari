@@ -209,4 +209,4 @@ def finetuning_dock_widget():
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def get_info_dock_widget():
-    return get_info, {'name': 'Get model info'}
+    return get_info_widget, {'name': 'Get model info'}

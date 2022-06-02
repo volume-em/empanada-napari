@@ -60,6 +60,7 @@ def training_widget():
 
         # prep the model
         model.load_state_dict(state_dict)
+        model.eval()
         model.fuse_model()
         if torch.cuda.is_available:
             model.cuda()
