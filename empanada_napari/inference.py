@@ -261,7 +261,7 @@ class Engine2d:
             instance_seg[outside_mask] = 0
 
             # relabel connected components
-            instance_seg = connected_components(instance_seg)
+            instance_seg = connected_components(instance_seg).astype(pan_seg.dtype)
             instance_seg[instance_seg > 0] += min_id
             pan_seg[instance_seg > 0] = instance_seg[instance_seg > 0]
 
