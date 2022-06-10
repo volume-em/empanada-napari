@@ -17,6 +17,7 @@ from empanada.inference.engines import (
 )
 from empanada.inference.tracker import InstanceTracker
 from empanada.array_utils import put
+from empanada.inference.rle import connected_components
 from empanada.inference.patterns import *
 
 from napari.qt.threading import thread_worker
@@ -247,6 +248,25 @@ class Engine2d:
         else:
             self.engine.thing_list = self.thing_list
 
+
+    def force_connected(self, pan_seg):
+        for label in self.thing_list:
+            # convert from pan_seg to instance_seg
+            min_id = label * self.label_divisor
+            max_id = min_id + self.label_divisor
+
+            # zero all objects/semantic segs outside of instance_id range
+            instance_seg = pan_seg.copy()
+            outside_mask = np.logical_or(pan_seg < min_id, pan_seg >= max_id)
+            instance_seg[outside_mask] = 0
+
+            # relabel connected components
+            instance_seg = connected_components(instance_seg)
+            instance_seg[instance_seg > 0] += min_id
+            pan_seg[instance_seg > 0] = instance_seg[instance_seg > 0]
+
+        return pan_seg
+
     def infer(self, image):
         # resize image to correct scale
         size = image.shape
@@ -255,7 +275,7 @@ class Engine2d:
 
         # engine handles upsampling and padding
         pan_seg = self.engine(image, size, upsampling=self.inference_scale)
-        return pan_seg.squeeze().cpu().numpy().astype(np.uint32)
+        return self.force_connected(pan_seg.squeeze().cpu().numpy().astype(np.uint32))
 
 class Engine3d:
     r"""Engine for 3D ortho-plane and stack inference"""
