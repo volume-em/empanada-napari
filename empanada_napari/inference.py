@@ -1,6 +1,5 @@
 import os, platform
 import zarr
-import yaml
 import numpy as np
 import torch
 
@@ -250,7 +249,7 @@ class Engine2d:
 
 
     def force_connected(self, pan_seg):
-        for label in self.thing_list:
+        for label in self.engine.thing_list:
             # convert from pan_seg to instance_seg
             min_id = label * self.label_divisor
             max_id = min_id + self.label_divisor
