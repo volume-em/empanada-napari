@@ -5,6 +5,7 @@ from skimage.measure import regionprops
 from scipy import ndimage as ndi
 from skimage.segmentation import watershed
 from skimage.feature import peak_local_max
+from skimage import draw
 import napari
 import numpy as np
 import dask.array as da
@@ -82,6 +83,38 @@ def delete_labels():
     return widget
 
 def merge_labels():
+
+    def _line_to_indices(line, axis):
+        if len(line[0]) == 2:
+            line = line.ravel().astype('int').tolist()
+            indices = np.stack(draw.line(*line), axis=1)
+        elif len(line[0]) == 3:
+            plane = line[0][axis]
+            keep_axes = [i for i in range(3) if i != axis]
+            line = line[:, keep_axes]
+            line = line.ravel().astype('int').tolist()
+            y, x = draw.line(*line)
+            # add plane to indices
+            z = np.full_like(x, plane)
+            indices = [y, x]
+            indices.insert(axis, z)
+            indices = np.stack(indices, axis=1)
+        elif len(line[0]) == 4:
+            assert axis == 0
+            planes = line[0][:2]
+            line = line[:, [2, 3]]
+            line = line.ravel().astype('int').tolist()
+            y, x = draw.line(*line)
+            # add plane to indices
+            t = np.full_like(x, planes[0])
+            z = np.full_like(x, planes[1])
+            indices = np.stack([t, z, y, x], axis=1)
+        else:
+            raise Exception('Only lines in 2d, 3d, and 4d are supported!')
+
+
+        return indices 
+
     @magicgui(
         call_button='Merge labels',
         layout='vertical',
@@ -91,16 +124,34 @@ def merge_labels():
     def widget(
         viewer: napari.viewer.Viewer,
         labels_layer: napari.layers.Labels,
-        points_layer: napari.layers.Points,
+        points_layer: napari.layers.Points, 
+        shapes_layer: napari.layers.Shapes, 
         apply3d
     ):
-        if points_layer is None:
+        if points_layer is None and shapes_layer is None:
             points_layer = viewer.add_points([])
             points_layer.mode = 'ADD'
+            print('Add points!')
             return
 
+        axis = viewer.dims.order[0]
         labels = labels_layer.data
-        world_points = points_layer.data
+        world_points = []
+        if points_layer is not None:
+            world_points.append(points_layer.data)
+
+        if shapes_layer is not None:
+            for stype, shape in zip(shapes_layer.shape_type, shapes_layer.data):
+                if stype == 'line':
+                    world_points.append(_line_to_indices(shape, axis))
+                elif stype == 'path':
+                    n = len(shape)  # number of vertices
+                    for i in range(n):
+                        world_points.append(_line_to_indices(shape[i:i + 2], axis))
+                        if i == n - 2:
+                            break
+
+        world_points = np.concatenate(world_points, axis=0)
 
         if apply3d and labels.ndim != 3:
             print('Apply 3D checked, but labels are not 3D. Ignoring.')
@@ -110,6 +161,14 @@ def merge_labels():
         for pt in world_points:
             local_points.append(tuple([int(c) for c in labels_layer.world_to_data(pt)]))
 
+        # clip local points outside of labels shape
+        for idx,pt in enumerate(local_points):
+            clipped_point = ()
+            for i,size in enumerate(labels.shape):
+                clipped_point += (min(size - 1, max(0, pt[i])), )
+
+            local_points[idx] = clipped_point
+
         if type(labels) == da.core.Array:
             label_ids = [labels[pt].compute() for pt in local_points]
         else:
@@ -118,6 +177,7 @@ def merge_labels():
         # drop any label_ids equal to 0 in case point
         # was placed on the background
         label_ids = list(filter(lambda x: x > 0, label_ids))
+        label_ids = np.unique(label_ids)
 
         # get merged label value
         # prefer the currently selected label
@@ -132,9 +192,6 @@ def merge_labels():
                 if l != new_label_id:
                     labels[labels == l] = new_label_id
         elif labels.ndim == 3:
-            # get the current viewer axis
-            axis = viewer.dims.order[0]
-
             # take labels along axis
             for local_pt in local_points:
                 labels2d = take(labels, local_pt[axis], axis)
@@ -159,7 +216,10 @@ def merge_labels():
                 labels[local_pt[0], local_pt[1]] = labels2d
 
         labels_layer.data = labels
-        points_layer.data = []
+        if points_layer is not None:
+            points_layer.data = []
+        if shapes_layer is not None:
+            shapes_layer.data = []
 
         print(f'Merged labels {label_ids} to {new_label_id}')
 
