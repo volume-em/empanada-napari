@@ -1,5 +1,6 @@
 import os
 import time
+import platform
 import numpy as np
 from tqdm import tqdm
 from glob import glob
@@ -8,6 +9,7 @@ import torch
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.backends.cudnn as cudnn
+import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.cuda.amp import autocast, GradScaler
 
@@ -68,6 +70,12 @@ def main_worker(config):
 
     if str(config['device']) == 'cpu':
         print(f"Using CPU for training.")
+
+    if platform.system() == "Darwin":
+        try:
+            mp.set_start_method('spawn')
+        except RuntimeError:
+            pass
 
     # setup the model and pick dataset class
     model_arch = config['MODEL']['arch']
@@ -173,6 +181,8 @@ def main_worker(config):
 
     # num workers always less than number of batches in train dataset
     num_workers = min(config['TRAIN']['workers'], len(train_dataset) // config['TRAIN']['batch_size'])
+    if platform.system() == "Darwin":
+        num_workers = 0
 
     train_loader = DataLoader(
         train_dataset, batch_size=config['TRAIN']['batch_size'], shuffle=(train_sampler is None),
