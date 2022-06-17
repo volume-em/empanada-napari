@@ -194,13 +194,24 @@ def volume_inference_widget():
                 store_url=store_url
             )
 
-        def _new_layers(mask, description):
+        def _new_layers(mask, description, instances=None):
             layers = []
 
             if type(mask) == zarr.core.Array:
                 mask = da.from_zarr(mask)
 
-            viewer.add_labels(mask, name=f'{image_layer.name}-{description}', visible=True)
+            metadata = {}
+            if instances is not None:
+                for label, label_attrs in instances.items():
+                    metadata[label] = {
+                        'box': label_attrs['box'],
+                        'area': label_attrs['runs'].sum(),
+                    }
+
+            viewer.add_labels(
+                mask, name=f'{image_layer.name}-{description}', 
+                visible=True, metadata=metadata
+            )
 
         def _new_segmentation(*args):
             mask = args[0][0]
@@ -220,9 +231,9 @@ def volume_inference_widget():
                     print(e)
 
         def _new_class_stack(*args):
-            masks, class_name = args[0]
+            masks, class_name, instances = args[0]
             try:
-                _new_layers(masks, f'{class_name}-prediction')
+                _new_layers(masks, f'{class_name}-prediction', instances)
 
                 for layer in viewer.layers:
                     layer.visible = False

@@ -101,7 +101,7 @@ def stack_postprocessing(
 
         fill_volume(stack_vol, stack_tracker.instances)
 
-        yield stack_vol, class_name
+        yield stack_vol, class_name, stack_tracker.instances
 
 @thread_worker
 def tracker_consensus(
@@ -159,7 +159,7 @@ def tracker_consensus(
 
         fill_volume(consensus_vol, consensus_tracker.instances)
 
-        yield consensus_vol, class_name
+        yield consensus_vol, class_name, consensus_tracker.instances
 
 class Engine2d:
     r"""Engine for 2D and parameter testing."""
