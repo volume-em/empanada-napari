@@ -63,7 +63,7 @@ def test_widget():
                     img_slice = img_slice.compute()
 
                 seg = engine.infer(img_slice)
-                yield seg, axis, plane
+                yield seg, axis, plane, None, None
 
         elif image.ndim == 2:
             start = time()
@@ -73,10 +73,9 @@ def test_widget():
             plane = 0
             seg = engine.infer(image)
             print(f'Inference time:', time() - start)
-            yield seg, axis, plane
+            yield seg, axis, plane, None, None
 
         return
-
 
     logo = abspath(__file__, 'resources/empanada_logo.png')
 
@@ -130,6 +129,9 @@ def test_widget():
             "Output layer must have the same shape as the input image."
             assert viewport is False, "Cannot output to layer and restrict to viewport at the same time."
 
+        if batch_mode:
+            assert viewport is False, "Cannot use batch mode and restrict to viewport at the same time."
+
         # load the model config
         model_config_name = model_config
         model_config = read_yaml(model_configs[model_config])
@@ -180,12 +182,24 @@ def test_widget():
                 yslice = slice(*corners[2])
                 xslice = slice(*corners[3])
             elif axis is not None:
-                yaxis, xaxis = [i for i in range(3) if i != axis]
-                yslice = slice(*corners[yaxis])
-                xslice = slice(*corners[xaxis])
+                # handle all of the weird special cases
+                cases12 = [(0, 1, 2), (0, 2, 1), (2, 1, 0), (1, 0, 2)]
+                cases01 = [(1, 2, 0)]
+                cases20 = [(2, 0, 1)]
+                if viewer.dims.order in cases12: 
+                    yslice = slice(*corners[1])
+                    xslice = slice(*corners[2])
+                elif viewer.dims.order in cases01: 
+                    yslice = slice(*corners[0])
+                    xslice = slice(*corners[1])
+                else:  # cases20 
+                    yslice = slice(*corners[2])
+                    xslice = slice(*corners[0])
             else:
                 yslice = slice(*corners[0])
                 xslice = slice(*corners[1])
+
+            print(f'Corners {corners}, slices {yslice, xslice}')
 
             return yslice, xslice
 
@@ -230,6 +244,7 @@ def test_widget():
                     slices[xaxis] = xslice
                     y = yslice.start
                     x = xslice.start
+                    print(f'Slices {slices}')
 
             else:
                 slices = [slice(None), slice(None)]
@@ -255,8 +270,11 @@ def test_widget():
                     translate[axis[1]] = plane[1]
                 else:
                     seg = np.expand_dims(seg, axis=axis)
-                    translate = [0, y, x]
+                    translate = [0, 0, 0]
                     translate[axis] = plane
+                    yaxis, xaxis = [i for i in range(3) if i != axis]
+                    translate[yaxis] = y
+                    translate[xaxis] = x
             else:
                 translate = [y, x]
 
@@ -287,11 +305,9 @@ def test_widget():
         # load data for currently viewer slice of chosen image layer
         if not batch_mode:
             image2d, axis, plane, y, x = _get_current_slice(image_layer)
-            print('Current slice', image2d.shape, axis, plane)
+            print(f'Image of size {image2d.shape} sliced at plane {plane} from axis {axis}')
             if type(image2d) == da.core.Array:
                 image2d = image2d.compute()
-
-            print('Image2d shape', image2d.shape, axis, plane, y, x)
 
             test_worker = run_model(widget.engine, image2d, axis, plane, y, x)
             if output_to_layer:
