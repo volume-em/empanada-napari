@@ -1,18 +1,9 @@
-import sys
 import os
-from typing import Any
-from napari_plugin_engine import napari_hook_implementation
-
-import time
-import numpy as np
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QPlainTextEdit
-
 import napari
 from napari import Viewer
-from napari.layers import Image, Shapes
+from napari.layers import Image 
+from napari_plugin_engine import napari_hook_implementation
 from magicgui import magicgui
-
-from magicgui.tqdm import tqdm
 
 def volume_inference_widget():
     from napari.qt.threading import thread_worker
@@ -25,7 +16,6 @@ def volume_inference_widget():
     from empanada_napari.multigpu import MultiGPUEngine3d
     from empanada_napari.utils import get_configs, abspath
     from empanada.config_loaders import read_yaml
-    from empanada.inference import filters
 
     logo = abspath(__file__, 'resources/empanada_logo.png')
     # get list of all available model configs
@@ -195,8 +185,6 @@ def volume_inference_widget():
             )
 
         def _new_layers(mask, description, instances=None):
-            layers = []
-
             if type(mask) == zarr.core.Array:
                 mask = da.from_zarr(mask)
 
@@ -208,9 +196,22 @@ def volume_inference_widget():
                         'area': label_attrs['runs'].sum(),
                     }
 
+            translate = image_layer.translate
+            scale = image_layer.scale
+            ndim = image_layer.data[0].ndim if image_layer.multiscale else image_layer.data.ndim
+            if ndim:
+                shape = image_layer.data.shape
+                if shape[0] in [1, 3, 4]: 
+                    translate = translate[1:]
+                    scale = scale[1:]
+                elif shape[-1] in [1, 3, 4]: 
+                    translate = translate[:-1]
+                    scale = scale[:-1]
+
             viewer.add_labels(
                 mask, name=f'{image_layer.name}-{description}', 
-                visible=True, metadata=metadata
+                visible=True, metadata=metadata, translate=translate,
+                scale=scale
             )
 
         def _new_segmentation(*args):
@@ -265,6 +266,21 @@ def volume_inference_widget():
         if image_layer.multiscale:
             print(f'Multiscale image selected, using highest resolution level!')
             image = image[0]
+
+        # verify that the image doesn't have extraneous channel dimensions
+        assert image.ndim in [3, 4], "Only 3D and 4D input images can be handled!"
+        if image.ndim == 4:
+            # channel dimensions are commonly 1, 3 and 4
+            # check for dimensions on zeroeth and last axes
+            shape = image.shape
+            if shape[0] in [1, 3, 4]: 
+                image = image[0]
+            elif shape[-1] in [1, 3, 4]: 
+                image = image[..., 0]
+            else:
+                raise Exception(f'Image volume must be 3D, got image of shape {shape}')
+
+            print(f'Got 4D image of shape {shape}, extracted single channel of size {image.shape}')
 
         if orthoplane:
             worker = orthoplane_inference(widget.engine, image)

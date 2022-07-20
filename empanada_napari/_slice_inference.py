@@ -1,21 +1,15 @@
-import sys
-import yaml
-import os
-from typing import Any
-from napari_plugin_engine import napari_hook_implementation
-
+import math
+from tkinter import W
 import numpy as np
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QPlainTextEdit
+from napari_plugin_engine import napari_hook_implementation
 
 import napari
 from napari import Viewer
-from napari.layers import Image, Labels, Shapes
+from napari.layers import Image, Labels
 from magicgui import magicgui
 
 #from magicgui.tqdm import tqdm
 from tqdm import tqdm
-
-import zarr
 import dask.array as da
 
 def test_widget():
@@ -43,7 +37,7 @@ def test_widget():
     ):
         # create the inference engine
         start = time()
-        seg = engine.infer(image)
+        seg = engine.infer(image) 
         print(f'Inference time:', time() - start)
         return seg, axis, plane, y, x
 
@@ -132,6 +126,13 @@ def test_widget():
         if batch_mode:
             assert viewport is False, "Cannot use batch mode and restrict to viewport at the same time."
 
+        if viewport:
+            assert all(s == 1 for s in image_layer.scale), "Viewport inference only supports images with scale 1 in all dimensions!"
+            assert viewer.dims.order[0] != 1, "Viewport inference not supported for xz planes!"
+
+        if not all(s == 1 for s in image_layer.scale):
+            print(f'Image has non-unit scale. 2D segmentations will disappear after rotation or axis rolling!')
+
         # load the model config
         model_config_name = model_config
         model_config = read_yaml(model_configs[model_config])
@@ -209,7 +210,7 @@ def test_widget():
             # handle multiscale by taking highest resolution level
             image = image_layer.data
             if image_layer.multiscale:
-                print(f'Multiscale image selected, using highest resolution level!')
+                print('Using highest resolution level from multiscale!')
                 image = image[0]
 
             y, x = 0, 0
@@ -270,15 +271,19 @@ def test_widget():
                     translate[axis[1]] = plane[1]
                 else:
                     seg = np.expand_dims(seg, axis=axis)
-                    translate = [0, 0, 0]
-                    translate[axis] = plane
+
+                    # oddly translate has to be a list and
+                    # not an array or things break. WHY????
+                    translate = image_layer.translate.tolist()
+                    translate[axis] += plane
                     yaxis, xaxis = [i for i in range(3) if i != axis]
-                    translate[yaxis] = y
-                    translate[xaxis] = x
+                    translate[yaxis] += y
+                    translate[xaxis] += x
             else:
                 translate = [y, x]
 
             viewer.add_labels(seg, name=f'empanada_seg_2d', visible=True, translate=tuple(translate))
+            viewer.layers[-1].scale = image_layer.scale
 
         def _store_test_result(*args):
             seg, axis, plane, _, _ = args[0]
@@ -317,6 +322,8 @@ def test_widget():
             test_worker.start()
         else:
             assert not output_to_layer, "Batch mode is not compatible with output to layer!"
+            assert not image_layer.multiscale, "Batch mode is not compatible with multiscale images!"
+
             test_worker = run_model_batch(widget.engine, image_layer.data)
             test_worker.yielded.connect(_show_test_result)
             test_worker.start()

@@ -310,8 +310,8 @@ class Engine2d:
             pan_seg = rle.rle_seg_to_pan_seg(rle_seg, image.shape)
             return pan_seg
         else:
-            # resize image to correct scale
             size = image.shape
+            # resize image to correct scale
             image = resize_by_factor(image, self.inference_scale)
             image = self.preprocessor(image)['image'].unsqueeze(0)
             pan_seg = self.engine(image, size, upsampling=self.inference_scale)

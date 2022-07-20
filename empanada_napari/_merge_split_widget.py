@@ -10,13 +10,24 @@ import napari
 import numpy as np
 import dask.array as da
 
+
+def map_points(world_points, labels_layer):
+    assert all(s == 1 for s in labels_layer.scale), "Labels layer must have scale of (1, 1, 1)!"
+    assert all(t == 0 for t in labels_layer.translate), "Labels layer must have translation of (0, 0, 0)!"
+
+    local_points = []
+    for pt in world_points:
+        local_points.append(tuple([int(c) for c in labels_layer.world_to_data(pt)]))
+    
+    return local_points
+
+
 def delete_labels():
     @magicgui(
         call_button='Delete labels',
         layout='vertical',
         apply3d=dict(widget_type='CheckBox', text='Apply in 3D', value=False, tooltip='Check box to delete label in 3D.')
     )
-
     def widget(
         viewer: napari.viewer.Viewer,
         labels_layer: napari.layers.Labels,
@@ -26,7 +37,11 @@ def delete_labels():
         if points_layer is None:
             points_layer = viewer.add_points([])
             points_layer.mode = 'ADD'
+            print('Add points!')
             return
+
+        if not all(t == 0 for t in labels_layer.translate):
+            raise Exception('Delete labels not supported for translated labels layers!')
 
         labels = labels_layer.data
         world_points = points_layer.data
@@ -35,9 +50,7 @@ def delete_labels():
             print('Apply 3D checked, but labels are not 3D. Ignoring.')
 
         # get points as indices in local coordinates
-        local_points = []
-        for pt in world_points:
-            local_points.append(tuple([int(c) for c in labels_layer.world_to_data(pt)]))
+        local_points = map_points(world_points, labels_layer)
 
         if type(labels) == da.core.Array:
             label_ids = [labels[pt].compute() for pt in local_points]
@@ -112,7 +125,6 @@ def merge_labels():
         else:
             raise Exception('Only lines in 2d, 3d, and 4d are supported!')
 
-
         return indices 
 
     @magicgui(
@@ -157,9 +169,7 @@ def merge_labels():
             print('Apply 3D checked, but labels are not 3D. Ignoring.')
 
         # get points as indices in local coordinates
-        local_points = []
-        for pt in world_points:
-            local_points.append(tuple([int(c) for c in labels_layer.world_to_data(pt)]))
+        local_points = map_points(world_points, labels_layer)
 
         # clip local points outside of labels shape
         for idx,pt in enumerate(local_points):
@@ -299,9 +309,7 @@ def split_labels():
             print('Apply 3D checked, but labels are not 3D. Ignoring.')
 
         # get points as indices in local coordinates
-        local_points = []
-        for pt in world_points:
-            local_points.append(tuple([int(c) for c in labels_layer.world_to_data(pt)]))
+        local_points = map_points(world_points, labels_layer)
 
         if type(labels) == da.core.Array:
             raise Exception(f'Split operation is not supported on Dask Array labels!')

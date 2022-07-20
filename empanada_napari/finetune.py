@@ -69,6 +69,8 @@ def main_worker(config):
 
     if str(config['device']) == 'cpu':
         print(f"Using CPU for training.")
+    else:
+        print(f"Using GPU for training.")
 
     if platform.system() == "Darwin":
         try:
