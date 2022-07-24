@@ -66,9 +66,20 @@ def main(config):
     return main_worker(config)
 
 def main_worker(config):
-    config['device'] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # check whether GPU or M1 Mac hardware is available
+    if torch.cuda.is_available() and use_gpu:
+        device = torch.device('cuda:0')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+    config['device'] = device
 
-    if str(config['device']) == 'cpu':
+    if str(config['device']) == 'cuda:0':
+        print("Using GPU for training.")
+    elif str(config['device']) == 'mps':
+        print("Using M1 Mac hardware for traiing.")
+    elif str(config['device']) == 'cpu':
         print(f"Using CPU for training.")
     else:
         print(f"Using GPU for training.")
