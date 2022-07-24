@@ -7,8 +7,8 @@ labels:
 thing_list:
 - 1
 
-model: https://www.dropbox.com/s/71s03kwh336t1es/MitoNet_mini.pth?dl=1
-model_quantized: https://www.dropbox.com/s/y6i90ogv4k2stch/MitoNet_mini_quantized.pth?dl=1
+model: https://zenodo.org/record/6861565/files/MitoNet_v1_mini.pth?download=1
+model_quantized: https://zenodo.org/record/6861565/files/MitoNet_v1_mini_quantized.pth?download=1 
 
 padding_factor: 128
 norms:

@@ -62,7 +62,7 @@ def training_widget():
         model.load_state_dict(state_dict)
         model.eval()
         model.fuse_model()
-        if torch.cuda.is_available:
+        if torch.cuda.is_available():
             model.cuda()
 
         model = torch.jit.script(model)
@@ -112,7 +112,7 @@ def training_widget():
         model_arch=dict(widget_type='ComboBox', label='Model architecture', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model architecture to train.'),
         use_cem=dict(widget_type='CheckBox', text='Use CEM pretrained weights', value=True, tooltip='Whether to initialize model with CEM pretrained weights.'),
         finetune_layer=dict(widget_type='ComboBox', label='Finetunable layers', choices=['none', 'stage4', 'stage3', 'stage2', 'stage1', 'all'], value='all', tooltip='Layers to finetune in the encoder. Ignored if not using CEM weights.'),
-        iterations=dict(widget_type='SpinBox', value=100, min=100, max=10000, step=100, label='Iterations', tooltip='number of iterations for model training'),
+        iterations=dict(widget_type='SpinBox', value=100, min=1, max=10000, step=100, label='Iterations', tooltip='number of iterations for model training'),
         patch_size=dict(widget_type='SpinBox', value=256, min=224, max=512, step=16, label='Patch size in pixels'),
         custom_config=dict(widget_type='FileEdit', label='Custom config (optional)', value='default config', tooltip='path to a custom empanada training config file; will only overwrite the model architecture.'),
 
@@ -229,9 +229,9 @@ def training_widget():
             for k in aug.keys():
                 aug[k] = patch_size if ('height' in k or 'width' in k) and aug.get(k) is None else aug[k]
 
-        config['TRAIN']['save_freq'] = epochs // 5
+        config['TRAIN']['save_freq'] = max(1, epochs // 5)
         config['EVAL']['eval_dir'] = eval_dir
-        config['EVAL']['epochs_per_eval'] = epochs // 5
+        config['EVAL']['epochs_per_eval'] = max(1, epochs // 5)
 
         if 'epochs' in config['TRAIN']['schedule_params']:
             config['TRAIN']['schedule_params']['epochs'] = epochs

@@ -44,7 +44,7 @@ def pick_patches():
         for _ in range(num_patches):
             plane = None
             if points and points is not None:
-                patch_ctr = points.pop(0)
+                patch_ctr = points.pop(0)                
                 if len(patch_ctr) == 2:
                     ys = int(patch_ctr[0] - patch_size / 2)
                     ys = min(ys, image.shape[0] - patch_size)
@@ -186,7 +186,13 @@ def pick_patches():
         if points_layer is not None:
             local_points = []
             for pt in points_layer.data:
-                local_points.append(tuple([int(c) for c in image_layer.world_to_data(pt)]))
+                local_points.append(tuple([int(c * image_layer.scale[i]) for i,c in enumerate(image_layer.world_to_data(pt))]))
+
+            layer_idx = [l.name for l in viewer.layers].index(image_layer.name)
+            
+            assert all(t == 0 for t in image_layer.translate), \
+            f"Cannot pick from points for this image! In console enter viewer.layers[{layer_idx}].translate = (0, 0, 0), then retry."
+
         else:
             local_points = None
 
@@ -197,9 +203,9 @@ def pick_patches():
             patches, locs = args[0]
 
             if len(locs[0]) == 5:
-                suffices = [f'-LOC-2d-{l[0]}_{l[1]}-{l[2]}_{l[3]}-{l[4]}' for l in locs]
+                suffices = [f's{pyramid_level}-LOC-2d-{l[0]}_{l[1]}-{l[2]}_{l[3]}-{l[4]}' for l in locs]
             else:
-                suffices = [f'-LOC-2d_{l[0]}-{l[1]}_{l[2]}-{l[3]}' for l in locs]
+                suffices = [f's{pyramid_level}-LOC-2d_{l[0]}-{l[1]}_{l[2]}-{l[3]}' for l in locs]
 
             metadata = {
                 'prefix': f'{name}',
@@ -208,17 +214,25 @@ def pick_patches():
 
             viewer.add_image(patches, name=f'{name}_patches', metadata=metadata, visible=True)
             viewer.add_labels(np.zeros(patches.shape, dtype=np.uint32), name=f'{name}_patches_labels', metadata=metadata, visible=True)
+            viewer.dims.current_step = 0 
 
         def _show_flipbooks(*args):
             flipbooks, locs = args[0]
 
             metadata = {
                 'prefix': f'{name}',
-                'suffices': [f'-LOC-{l[0]}_{l[1]}-{l[2]}_{l[3]}-{l[4]}_{l[5]}-{l[6]}' for l in locs]
+                'suffices': [f's{pyramid_level}-LOC-{l[0]}_{l[1]}-{l[2]}_{l[3]}-{l[4]}_{l[5]}-{l[6]}' for l in locs]
             }
 
-            viewer.add_image(flipbooks, name=f'{name}_flipbooks', metadata=metadata, visible=True)
-            viewer.add_labels(np.zeros(flipbooks.shape, dtype=np.uint32), name=f'{name}_flipbooks_labels', metadata=metadata, visible=True)
+            if len(viewer.dims.order) == 3:
+                viewer.dims.order = (0, 1, 2)
+            elif len(viewer.dims.order) == 4:
+                viewer.dims.order = (0, 1, 2, 3)
+
+            scale = (1,) + image_layer.scale
+            viewer.add_image(flipbooks, name=f'{name}_flipbooks', metadata=metadata, visible=True, scale=scale)
+            viewer.add_labels(np.zeros(flipbooks.shape, dtype=np.uint32), name=f'{name}_flipbooks_labels', metadata=metadata, scale=scale, visible=True)
+            viewer.dims.current_step = (0, 2, 0, 0)
 
         if image_layer.multiscale:
             image = image_layer.data[pyramid_level]

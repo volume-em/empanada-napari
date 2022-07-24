@@ -16,8 +16,10 @@ from empanada.inference.engines import (
 )
 from empanada.inference.tracker import InstanceTracker
 from empanada.array_utils import put
-from empanada.inference.rle import connected_components
+from empanada.inference import rle
+from empanada.inference.tile import Tiler
 from empanada.inference.patterns import *
+from empanada.consensus import merge_objects_from_tiles, merge_semantic_from_tiles
 
 from napari.qt.threading import thread_worker
 from empanada_napari.utils import Preprocessor, load_model_to_device
@@ -171,6 +173,7 @@ class Engine2d:
         confidence_thr=0.3,
         semantic_only=False,
         fine_boundaries=False,
+        tile_size=0,
         use_gpu=True,
         use_quantized=False
     ):
@@ -196,6 +199,7 @@ class Engine2d:
         self.padding_factor = model_config['padding_factor']
         self.inference_scale = inference_scale
         self.fine_boundaries = fine_boundaries
+        self.tile_size = tile_size
 
         if semantic_only:
             thing_list = []
@@ -215,7 +219,6 @@ class Engine2d:
 
         # set the image transforms
         norms = model_config['norms']
-        gray_channels = 1
         self.preprocessor = Preprocessor(**norms)
 
     def update_params(
@@ -226,7 +229,8 @@ class Engine2d:
         nms_kernel,
         confidence_thr,
         fine_boundaries,
-        semantic_only=False
+        semantic_only=False,
+        tile_size=0
     ):
         # note that input_scale is the variable name in the engine
         self.inference_scale = inference_scale
@@ -252,6 +256,7 @@ class Engine2d:
         else:
             self.engine.thing_list = self.thing_list
 
+        self.tile_size = tile_size
 
     def force_connected(self, pan_seg):
         for label in self.engine.thing_list:
@@ -265,21 +270,57 @@ class Engine2d:
             instance_seg[outside_mask] = 0
 
             # relabel connected components
-            instance_seg = connected_components(instance_seg).astype(pan_seg.dtype)
+            instance_seg = rle.connected_components(instance_seg).astype(pan_seg.dtype)
             instance_seg[instance_seg > 0] += min_id
             pan_seg[instance_seg > 0] = instance_seg[instance_seg > 0]
 
         return pan_seg
 
     def infer(self, image):
-        # resize image to correct scale
-        size = image.shape
-        image = resize_by_factor(image, self.inference_scale)
-        image = self.preprocessor(image)['image'].unsqueeze(0)
-
         # engine handles upsampling and padding
-        pan_seg = self.engine(image, size, upsampling=self.inference_scale)
-        return self.force_connected(pan_seg.squeeze().cpu().numpy().astype(np.uint32))
+        if self.tile_size > 0 and any([s > self.tile_size for s in image.shape]):
+            print('Tiling image for inference...')
+            tiler = Tiler(
+                image.shape, tile_size=self.tile_size, 
+                overlap_width=min(128, int(self.tile_size * 0.1))
+            )
+
+            rle_segs = []
+            for i in tqdm(range(len(tiler))):
+                tile = tiler(image, i)
+                tile_size = tile.shape
+                tile = resize_by_factor(tile, self.inference_scale)
+                tile = self.preprocessor(tile)['image'].unsqueeze(0)
+
+                tile_pan_seg = self.engine(tile, tile_size, upsampling=self.inference_scale)
+                tile_pan_seg = tile_pan_seg.squeeze().cpu().numpy().astype(np.uint32)
+                tile_rle_seg = rle.pan_seg_to_rle_seg(
+                    tile_pan_seg, self.labels, self.label_divisor, self.engine.thing_list
+                )
+                tile_rle_seg = tiler.translate_rle_seg(tile_rle_seg, i)
+                rle_segs.append(tile_rle_seg)
+
+            # merge the tiles with consensus
+            rle_seg = {}
+            for label in self.labels:
+                if label in self.engine.thing_list:
+                    rle_seg[label] = merge_objects_from_tiles(
+                        [rs[label] for rs in rle_segs], tiler.overlap_rle
+                    )
+                else:
+                    rle_seg[label] = merge_semantic_from_tiles(
+                        [rs[label] for rs in rle_segs]
+                    )
+
+            pan_seg = rle.rle_seg_to_pan_seg(rle_seg, image.shape)
+            return pan_seg
+        else:
+            size = image.shape
+            # resize image to correct scale
+            image = resize_by_factor(image, self.inference_scale)
+            image = self.preprocessor(image)['image'].unsqueeze(0)
+            pan_seg = self.engine(image, size, upsampling=self.inference_scale)
+            return self.force_connected(pan_seg.squeeze().cpu().numpy().astype(np.uint32))
 
 class Engine3d:
     r"""Engine for 3D ortho-plane and stack inference"""

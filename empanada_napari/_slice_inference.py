@@ -1,21 +1,15 @@
-import sys
-import yaml
-import os
-from typing import Any
-from napari_plugin_engine import napari_hook_implementation
-
+import math
+from tkinter import W
 import numpy as np
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QPlainTextEdit
+from napari_plugin_engine import napari_hook_implementation
 
 import napari
 from napari import Viewer
-from napari.layers import Image, Labels, Shapes
+from napari.layers import Image, Labels
 from magicgui import magicgui
 
 #from magicgui.tqdm import tqdm
 from tqdm import tqdm
-
-import zarr
 import dask.array as da
 
 def test_widget():
@@ -37,13 +31,15 @@ def test_widget():
         engine,
         image,
         axis,
-        plane
+        plane,
+        y,
+        x
     ):
         # create the inference engine
         start = time()
-        seg = engine.infer(image)
+        seg = engine.infer(image) 
         print(f'Inference time:', time() - start)
-        return seg, axis, plane
+        return seg, axis, plane, y, x
 
     @thread_worker
     def run_model_batch(
@@ -61,7 +57,7 @@ def test_widget():
                     img_slice = img_slice.compute()
 
                 seg = engine.infer(img_slice)
-                yield seg, axis, plane
+                yield seg, axis, plane, None, None
 
         elif image.ndim == 2:
             start = time()
@@ -71,10 +67,9 @@ def test_widget():
             plane = 0
             seg = engine.infer(image)
             print(f'Inference time:', time() - start)
-            yield seg, axis, plane
+            yield seg, axis, plane, None, None
 
         return
-
 
     logo = abspath(__file__, 'resources/empanada_logo.png')
 
@@ -87,7 +82,9 @@ def test_widget():
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         semantic_only=dict(widget_type='CheckBox', text='Semantic only', value=False, tooltip='Only run semantic segmentation for all classes.'),
         maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class'),
+        tile_size=dict(widget_type='SpinBox', value=0, min=0, max=4096, step=256, label='Tile size', tooltip='Tile size for inference, whole image will be segmented if 0'),
         batch_mode=dict(widget_type='CheckBox', text='Batch mode', value=False, tooltip='If checked, each image in a stack is segmented independently.'),
+        viewport=dict(widget_type='CheckBox', text='Confine to viewport', value=False, tooltip='If checked, inference will be restricted to the current viewport.'),
         output_to_layer=dict(widget_type='CheckBox', text='Output to layer', value=False, tooltip='If checked, the segmentation is output to the selected output layer.'),
     )
 
@@ -112,9 +109,11 @@ def test_widget():
         fine_boundaries,
         semantic_only,
         maximum_objects_per_class,
+        tile_size,
         batch_mode,
         use_gpu,
         use_quantized,
+        viewport,
         output_to_layer,
         output_layer: Labels
     ):
@@ -122,6 +121,17 @@ def test_widget():
             assert output_layer is not None, "Must select an output layer or uncheck Output to layer!"
             assert output_layer.data.shape == image_layer.data.shape, \
             "Output layer must have the same shape as the input image."
+            assert viewport is False, "Cannot output to layer and restrict to viewport at the same time."
+
+        if batch_mode:
+            assert viewport is False, "Cannot use batch mode and restrict to viewport at the same time."
+
+        if viewport:
+            assert all(s == 1 for s in image_layer.scale), "Viewport inference only supports images with scale 1 in all dimensions!"
+            assert viewer.dims.order[0] != 1, "Viewport inference not supported for xz planes!"
+
+        if not all(s == 1 for s in image_layer.scale):
+            print(f'Image has non-unit scale. 2D segmentations will disappear after rotation or axis rolling!')
 
         # load the model config
         model_config_name = model_config
@@ -147,6 +157,7 @@ def test_widget():
                 label_divisor=maximum_objects_per_class,
                 semantic_only=semantic_only,
                 fine_boundaries=fine_boundaries,
+                tile_size=tile_size,
                 use_gpu=use_gpu,
                 use_quantized=use_quantized
             )
@@ -162,8 +173,36 @@ def test_widget():
                 nms_kernel=min_distance_object_centers,
                 confidence_thr=confidence_thr,
                 semantic_only=semantic_only,
-                fine_boundaries=fine_boundaries
+                fine_boundaries=fine_boundaries,
+                tile_size=tile_size,
             )
+
+        def _viewer_slices(image_layer, axis=None):
+            corners = image_layer.corner_pixels.T.tolist()
+            if isinstance(axis, tuple) and isinstance(plane, tuple):
+                yslice = slice(*corners[2])
+                xslice = slice(*corners[3])
+            elif axis is not None:
+                # handle all of the weird special cases
+                cases12 = [(0, 1, 2), (0, 2, 1), (2, 1, 0), (1, 0, 2)]
+                cases01 = [(1, 2, 0)]
+                cases20 = [(2, 0, 1)]
+                if viewer.dims.order in cases12: 
+                    yslice = slice(*corners[1])
+                    xslice = slice(*corners[2])
+                elif viewer.dims.order in cases01: 
+                    yslice = slice(*corners[0])
+                    xslice = slice(*corners[1])
+                else:  # cases20 
+                    yslice = slice(*corners[2])
+                    xslice = slice(*corners[0])
+            else:
+                yslice = slice(*corners[0])
+                xslice = slice(*corners[1])
+
+            print(f'Corners {corners}, slices {yslice, xslice}')
+
+            return yslice, xslice
 
         def _get_current_slice(image_layer):
             cursor_pos = viewer.cursor.position
@@ -171,9 +210,10 @@ def test_widget():
             # handle multiscale by taking highest resolution level
             image = image_layer.data
             if image_layer.multiscale:
-                print(f'Multiscale image selected, using highest resolution level!')
+                print('Using highest resolution level from multiscale!')
                 image = image[0]
 
+            y, x = 0, 0
             if image.ndim == 4:
                 axis = tuple(viewer.dims.order[:2])
                 plane = (
@@ -182,41 +222,71 @@ def test_widget():
                 )
 
                 slices = [slice(None), slice(None), slice(None), slice(None)]
+                
                 slices[axis[0]] = plane[0]
                 slices[axis[1]] = plane[1]
+                if viewport:
+                    yslice, xslice = _viewer_slices(image_layer)
+                    slices[2] = yslice
+                    slices[3] = xslice
+                    y = yslice.start
+                    x = xslice.start
+
             elif image.ndim == 3:
                 axis = viewer.dims.order[0]
                 plane = int(image_layer.world_to_data(cursor_pos)[axis])
 
                 slices = [slice(None), slice(None), slice(None)]
                 slices[axis] = plane
+                if viewport:
+                    yaxis, xaxis = [i for i in range(3) if i != axis]
+                    yslice, xslice = _viewer_slices(image_layer, axis)
+                    slices[yaxis] = yslice
+                    slices[xaxis] = xslice
+                    y = yslice.start
+                    x = xslice.start
+                    print(f'Slices {slices}')
+
             else:
                 slices = [slice(None), slice(None)]
                 axis = None
                 plane = None
+                if viewport:
+                    yslice, xslice = _viewer_slices(image_layer, axis)
+                    slices[0] = yslice
+                    slices[1] = xslice
+                    y = yslice.start
+                    x = xslice.start
 
-            return image[tuple(slices)], axis, plane
+            return image[tuple(slices)], axis, plane, y, x
 
         def _show_test_result(*args):
-            seg, axis, plane = args[0]
+            seg, axis, plane, y, x = args[0]
 
             if axis is not None and plane is not None:
                 if isinstance(axis, tuple) and isinstance(plane, tuple):
                     seg = np.expand_dims(seg, axis=axis)
-                    translate = [0, 0, 0, 0]
+                    translate = [0, 0, y, x]
                     translate[axis[0]] = plane[0]
                     translate[axis[1]] = plane[1]
                 else:
                     seg = np.expand_dims(seg, axis=axis)
-                    translate = [0, 0, 0]
-                    translate[axis] = plane
+
+                    # oddly translate has to be a list and
+                    # not an array or things break. WHY????
+                    translate = image_layer.translate.tolist()
+                    translate[axis] += plane
+                    yaxis, xaxis = [i for i in range(3) if i != axis]
+                    translate[yaxis] += y
+                    translate[xaxis] += x
             else:
-                translate = [0, 0]
+                translate = [y, x]
 
             viewer.add_labels(seg, name=f'empanada_seg_2d', visible=True, translate=tuple(translate))
+            viewer.layers[-1].scale = image_layer.scale
 
         def _store_test_result(*args):
-            seg, axis, plane = args[0]
+            seg, axis, plane, _, _ = args[0]
 
             if axis is not None and plane is not None:
                 if isinstance(axis, tuple) and isinstance(plane, tuple):
@@ -239,12 +309,12 @@ def test_widget():
 
         # load data for currently viewer slice of chosen image layer
         if not batch_mode:
-            image2d, axis, plane = _get_current_slice(image_layer)
-            print('Current slice', image2d.shape, axis, plane)
+            image2d, axis, plane, y, x = _get_current_slice(image_layer)
+            print(f'Image of size {image2d.shape} sliced at plane {plane} from axis {axis}')
             if type(image2d) == da.core.Array:
                 image2d = image2d.compute()
 
-            test_worker = run_model(widget.engine, image2d, axis, plane)
+            test_worker = run_model(widget.engine, image2d, axis, plane, y, x)
             if output_to_layer:
                 test_worker.returned.connect(_store_test_result)
             else:
@@ -252,6 +322,8 @@ def test_widget():
             test_worker.start()
         else:
             assert not output_to_layer, "Batch mode is not compatible with output to layer!"
+            assert not image_layer.multiscale, "Batch mode is not compatible with multiscale images!"
+
             test_worker = run_model_batch(widget.engine, image_layer.data)
             test_worker.yielded.connect(_show_test_result)
             test_worker.start()
