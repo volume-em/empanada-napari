@@ -12,7 +12,7 @@ import dask.array as da
 
 
 def map_points(world_points, labels_layer):
-    #assert all(s == 1 for s in labels_layer.scale), "Labels layer must have scale of all ones!"
+    assert all(s == 1 for s in labels_layer.scale), "Labels layer must have scale of all ones!"
     #assert all(t == 0 for t in labels_layer.translate), "Labels layer must have translation of (0, 0, 0)!"
 
     local_points = []
