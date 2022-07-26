@@ -277,8 +277,10 @@ def test_widget():
                     translate = image_layer.translate.tolist()
                     translate[axis] += plane
                     yaxis, xaxis = [i for i in range(3) if i != axis]
-                    translate[yaxis] += y
-                    translate[xaxis] += x
+                    if y is not None:
+                        translate[yaxis] += y
+                    if x is not None:
+                        translate[xaxis] += x
             else:
                 translate = [y, x]
 
@@ -323,6 +325,7 @@ def test_widget():
         else:
             assert not output_to_layer, "Batch mode is not compatible with output to layer!"
             assert not image_layer.multiscale, "Batch mode is not compatible with multiscale images!"
+            assert not viewport, "Batch mode is not compatible with viewport inference!"
 
             test_worker = run_model_batch(widget.engine, image_layer.data)
             test_worker.yielded.connect(_show_test_result)

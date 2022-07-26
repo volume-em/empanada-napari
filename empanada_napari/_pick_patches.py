@@ -229,7 +229,7 @@ def pick_patches():
             elif len(viewer.dims.order) == 4:
                 viewer.dims.order = (0, 1, 2, 3)
 
-            scale = (1,) + image_layer.scale
+            scale = (1, 1, 1, 1)
             viewer.add_image(flipbooks, name=f'{name}_flipbooks', metadata=metadata, visible=True, scale=scale)
             viewer.add_labels(np.zeros(flipbooks.shape, dtype=np.uint32), name=f'{name}_flipbooks_labels', metadata=metadata, scale=scale, visible=True)
             viewer.dims.current_step = (0, 2, 0, 0)
@@ -280,7 +280,7 @@ def store_dataset():
 
     gui_params = dict(
         save_dir=dict(widget_type='FileEdit', value='./', label='Save directory', mode='d', tooltip='Directory in which to create a new dataset.'),
-        dataset_name=dict(widget_type='LineEdit', value='', label='Dataset name', tooltip='Name to use for the dataset, creates a directory in the Save Directory with this name, if appends if directory already exists.'),
+        dataset_name=dict(widget_type='LineEdit', value='', label='Dataset name', tooltip='Name to use for the dataset, creates a directory in the Save Directory with this name, it appends if directory already exists.'),
     )
     @magicgui(
         call_button='Save flipbooks',

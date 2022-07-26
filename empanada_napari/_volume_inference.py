@@ -120,9 +120,9 @@ def volume_inference_widget():
 
         chunk_size = chunk_size.split(',')
         if len(chunk_size) == 1:
-            chunk_size = tuple(int(chunk_size) for _ in range(3))
+            chunk_size = tuple(int(chunk_size[0]) for _ in range(3))
         else:
-            assert len(chunk_size == 3), f"Chunk size must be 1 or 3 integers, got {chunk_size}"
+            assert len(chunk_size) == 3, f"Chunk size must be 1 or 3 integers, got {chunk_size}"
             chunk_size = tuple(int(s) for s in chunk_size)
 
         # create the storage url from layer name and model config
