@@ -136,6 +136,7 @@ class MultiGPUEngine3d:
         fine_boundaries=False,
         semantic_only=False,
         store_url=None,
+        chunk_size=(256, 256, 256),
         save_panoptic=False
     ):
         # check whether GPU is available
@@ -178,6 +179,7 @@ class MultiGPUEngine3d:
         self.min_extent = min_extent
 
         self.save_panoptic = save_panoptic
+        self.chunk_size = chunk_size
         if store_url is not None:
             self.zarr_store = zarr.open(store_url, mode='w')
         else:
@@ -209,11 +211,9 @@ class MultiGPUEngine3d:
         # faster IO with chunking only along
         # the given axis, orthogonal viewing is slow though
         if self.zarr_store is not None and self.save_panoptic:
-            chunks = [None, None, None]
-            chunks[self.axes[axis_name]] = 1
             stack = self.zarr_store.create_dataset(
                 f'panoptic_{axis_name}', shape=shape3d,
-                dtype=self.dtype, chunks=tuple(chunks), overwrite=True
+                dtype=self.dtype, chunks=self.chunk_size, overwrite=True
             )
         elif self.save_panoptic:
             # we'll use uint32 for in memory segs

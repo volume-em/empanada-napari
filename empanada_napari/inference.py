@@ -61,12 +61,12 @@ def stack_postprocessing(
     min_size=200,
     min_extent=4,
     dtype=np.uint32,
-    chunk_size=(96, 96, 96)
+    chunk_size=(256, 256, 256)
 ):
     r"""Relabels and filters each class defined in trackers. Yields a numpy
     or zarr volume along with the name of the class that is segmented.
     """
-    labels = model_config['labels']
+    thing_list = model_config['thing_list']
     class_names = model_config['class_names']
     if store_url is not None:
         zarr_store = zarr.open(store_url)
@@ -74,7 +74,7 @@ def stack_postprocessing(
         zarr_store = None
 
     # create the final instance segmentations
-    for class_id, class_name in zip(labels, class_names):
+    for class_id, class_name in class_names.items():
         print(f'Creating stack segmentation for class {class_name}...')
 
         class_tracker = get_axis_trackers_by_class(trackers, class_id)[0]
@@ -85,15 +85,19 @@ def stack_postprocessing(
         stack_tracker.instances = instance_relabel(class_tracker)
 
         # inplace apply filters to final merged segmentation
-        filters.remove_small_objects(stack_tracker, min_size=min_size)
-        filters.remove_pancakes(stack_tracker, min_span=min_extent)
+        if class_id in thing_list:
+            filters.remove_small_objects(stack_tracker, min_size=min_size)
+            filters.remove_pancakes(stack_tracker, min_span=min_extent)
+            class_dtype = dtype
+        else:
+            class_dtype = np.uint8 
 
         print(f'Total {class_name} objects {len(stack_tracker.instances.keys())}')
 
         # decode and fill the instances
         if zarr_store is not None:
             stack_vol = zarr_store.create_dataset(
-                f'{class_name}_pred', shape=shape3d, dtype=dtype,
+                f'{class_name}', shape=shape3d, dtype=class_dtype,
                 overwrite=True, chunks=chunk_size
             )
         else:
@@ -115,7 +119,7 @@ def tracker_consensus(
     min_size=200,
     min_extent=4,
     dtype=np.uint32,
-    chunk_size=(96, 96, 96)
+    chunk_size=(256, 256, 256)
 ):
     r"""Calculate the orthoplane consensus from trackers. Yields a numpy
     or zarr volume along with the name of the class that is segmented.
@@ -143,15 +147,17 @@ def tracker_consensus(
             )
             filters.remove_small_objects(consensus_tracker, min_size=min_size)
             filters.remove_pancakes(consensus_tracker, min_span=min_extent)
+            class_dtype = dtype
         else:
             consensus_tracker = create_semantic_consensus(class_trackers, pixel_vote_thr)
+            class_dtype = np.uint8
 
         print(f'Total {class_name} objects {len(consensus_tracker.instances.keys())}')
 
         # decode and fill the instances
         if zarr_store is not None:
             consensus_vol = zarr_store.create_dataset(
-                f'{class_name}_pred', shape=shape3d, dtype=dtype,
+                f'{class_name}', shape=shape3d, dtype=class_dtype,
                 overwrite=True, chunks=chunk_size
             )
         else:
@@ -338,6 +344,7 @@ class Engine3d:
         use_gpu=True,
         use_quantized=False,
         store_url=None,
+        chunk_size=(256, 256, 256),
         save_panoptic=False
     ):
         # check whether GPU is available
@@ -390,6 +397,7 @@ class Engine3d:
         self.fine_boundaries = fine_boundaries
 
         self.save_panoptic = save_panoptic
+        self.chunk_size = chunk_size
         if store_url is not None:
             self.zarr_store = zarr.open(store_url, mode='w')
         else:
@@ -422,6 +430,7 @@ class Engine3d:
         fine_boundaries,
         semantic_only,
         store_url,
+        chunk_size,
         save_panoptic
     ):
         self.label_divisor = label_divisor
@@ -449,6 +458,7 @@ class Engine3d:
         self.engine.reset()
 
         self.save_panoptic = save_panoptic
+        self.chunk_size = chunk_size
         if store_url is not None:
             self.zarr_store = zarr.open(store_url, mode='w')
         else:
@@ -467,11 +477,9 @@ class Engine3d:
         # faster IO with chunking only along
         # the given axis, orthogonal viewing is slow though
         if self.zarr_store is not None and self.save_panoptic:
-            chunks = [None, None, None]
-            chunks[self.axes[axis_name]] = 1
             stack = self.zarr_store.create_dataset(
                 f'panoptic_{axis_name}', shape=shape3d,
-                dtype=self.dtype, chunks=tuple(chunks), overwrite=True
+                dtype=self.dtype, chunks=self.chunk_size, overwrite=True
             )
 
         elif self.save_panoptic:

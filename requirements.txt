@@ -1,5 +1,5 @@
-napari[all]>=0.4.13
+napari[all]>=0.4.15
 scikit-image>=0.18
-empanada-dl>=0.1.2
+empanada-dl>=0.1.5
 napari-plugin-engine>=0.1.4
 imagecodecs

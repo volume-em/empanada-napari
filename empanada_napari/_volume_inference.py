@@ -48,7 +48,6 @@ def volume_inference_widget():
         call_button='Run 3D Inference',
         layout='vertical',
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
-        store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Zarr Directory (optional)', mode='d', tooltip='location to store segmentations on disk'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0'),
         use_quantized=dict(widget_type='CheckBox', text='Use quantized model', value=device_count() == 0, tooltip='If checked, use the quantized model for faster CPU inference.'),
         multigpu=dict(widget_type='CheckBox', text='Multi GPU', value=False, tooltip='If checked, run on all available GPUs'),
@@ -72,14 +71,17 @@ def volume_inference_widget():
         orthoplane=dict(widget_type='CheckBox', text='Run ortho-plane', value=False, tooltip='Whether to run orthoplane inference'),
         return_panoptic=dict(widget_type='CheckBox', text='Return xy, xz, yz stacks', value=False, tooltip='Whether to return the inference stacks.'),
         pixel_vote_thr=dict(widget_type='SpinBox', value=2, min=1, max=3, step=1, label='Voxel Vote Thr Out of 3', tooltip='Number of votes out of 3 for a voxel to be labeled in the consensus'),
-        allow_one_view=dict(widget_type='CheckBox', text='Permit detections found in 1 stack into consensus', value=False, tooltip='Whether to allow detections into consensus that were picked up by inference in just 1 stack')
+        allow_one_view=dict(widget_type='CheckBox', text='Permit detections found in 1 stack into consensus', value=False, tooltip='Whether to allow detections into consensus that were picked up by inference in just 1 stack'),
+
+        storage_head=dict(widget_type='Label', label=f'<h3 text-align="center">Zarr Storage (optional)</h3>'),
+        store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Directory', mode='d', tooltip='location to store segmentations on disk'),
+        chunk_size=dict(widget_type='LineEdit', value='256', label='Chunk size', tooltip='Chunk size of the zarr array. Integer or comma separated list of 3 integers.'),
     )
     def widget(
         viewer: napari.viewer.Viewer,
         label_head,
         image_layer: Image,
         model_config,
-        store_dir,
         use_gpu,
         use_quantized,
         multigpu,
@@ -103,7 +105,11 @@ def volume_inference_widget():
         orthoplane,
         return_panoptic,
         pixel_vote_thr,
-        allow_one_view
+        allow_one_view,
+
+        storage_head,
+        store_dir,
+        chunk_size
     ):
         # load the model config
         model_config_name = model_config
@@ -112,13 +118,20 @@ def volume_inference_widget():
         min_extent = int(min_extent)
         maximum_objects_per_class = int(maximum_objects_per_class)
 
+        chunk_size = chunk_size.split(',')
+        if len(chunk_size) == 1:
+            chunk_size = tuple(int(chunk_size) for _ in range(3))
+        else:
+            assert len(chunk_size == 3), f"Chunk size must be 1 or 3 integers, got {chunk_size}"
+            chunk_size = tuple(int(s) for s in chunk_size)
+
         # create the storage url from layer name and model config
         store_dir = str(store_dir)
         if store_dir == 'no zarr storage':
             store_url = None
             print(f'Running without zarr storage directory, this may use a lot of memory!')
         else:
-            store_url = os.path.join(store_dir, f'{image_layer.name}_{model_config_name}_napari.zarr')
+            store_url = os.path.join(store_dir, f'{image_layer.name}_{model_config_name}.zarr')
 
         if not hasattr(widget, 'last_config'):
             widget.last_config = model_config_name
@@ -143,7 +156,8 @@ def volume_inference_widget():
                 label_divisor=maximum_objects_per_class,
                 semantic_only=semantic_only,
                 save_panoptic=return_panoptic,
-                store_url=store_url
+                store_url=store_url,
+                chunk_size=chunk_size
             )
             widget.last_config = model_config_name
         # conditions where model needs to be (re)loaded
@@ -163,7 +177,8 @@ def volume_inference_widget():
                 use_quantized=use_quantized,
                 semantic_only=semantic_only,
                 save_panoptic=return_panoptic,
-                store_url=store_url
+                store_url=store_url,
+                chunk_size=chunk_size
             )
             widget.last_config = model_config_name
             widget.using_gpu = use_gpu
@@ -181,7 +196,8 @@ def volume_inference_widget():
                 label_divisor=maximum_objects_per_class,
                 semantic_only=semantic_only,
                 save_panoptic=return_panoptic,
-                store_url=store_url
+                store_url=store_url,
+                chunk_size=chunk_size
             )
 
         def _new_layers(mask, description, instances=None):
@@ -248,7 +264,7 @@ def volume_inference_widget():
             trackers_dict = args[0][2]
             postprocess_worker = stack_postprocessing(
                 trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
-                min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
+                min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype, chunk_size=chunk_size
             )
             postprocess_worker.yielded.connect(_new_class_stack)
             postprocess_worker.start()
@@ -257,7 +273,8 @@ def volume_inference_widget():
             consensus_worker = tracker_consensus(
                 trackers_dict, store_url, model_config, label_divisor=maximum_objects_per_class,
                 pixel_vote_thr=pixel_vote_thr, allow_one_view=allow_one_view,
-                min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype
+                min_size=min_size, min_extent=min_extent, dtype=widget.engine.dtype,
+                chunk_size=chunk_size
             )
             consensus_worker.yielded.connect(_new_class_stack)
             consensus_worker.start()
