@@ -12,8 +12,8 @@ import dask.array as da
 
 
 def map_points(world_points, labels_layer):
-    assert all(s == 1 for s in labels_layer.scale), "Labels layer must have scale of (1, 1, 1)!"
-    assert all(t == 0 for t in labels_layer.translate), "Labels layer must have translation of (0, 0, 0)!"
+    #assert all(s == 1 for s in labels_layer.scale), "Labels layer must have scale of all ones!"
+    #assert all(t == 0 for t in labels_layer.translate), "Labels layer must have translation of (0, 0, 0)!"
 
     local_points = []
     for pt in world_points:
@@ -39,9 +39,6 @@ def delete_labels():
             points_layer.mode = 'ADD'
             print('Add points!')
             return
-
-        if not all(t == 0 for t in labels_layer.translate):
-            raise Exception('Delete labels not supported for translated labels layers!')
 
         labels = labels_layer.data
         world_points = points_layer.data
@@ -273,12 +270,12 @@ def split_labels():
         return energy, markers
 
     def _point_markers(binary, local_points, shed_box):
-        energy = binary
         markers = np.zeros(binary.shape, dtype=bool)
         for local_pt in local_points:
             markers[_translate_point_in_box(local_pt, shed_box)] = True
 
         markers, _ = ndi.label(markers)
+        energy = binary
         return energy, markers
 
     @magicgui(
@@ -323,6 +320,10 @@ def split_labels():
         local_points = local_points[~background_pts]
         label_ids = label_ids[~background_pts]
 
+        if len(label_ids) == 0:
+            print('No labels selected!')
+            return
+
         label_id = label_ids[0]
 
         if len(np.unique(label_ids)) > 1:
@@ -362,7 +363,10 @@ def split_labels():
             binary = crop_and_binarize(labels2d, shed_box, label_id)
 
             if points_as_markers:
-                energy, markers = _point_markers(binary, local_points, shed_box)
+                local_points2d = []
+                for lp in local_points:
+                    local_points2d.append([p for i,p in enumerate(lp) if i != axis])
+                energy, markers = _point_markers(binary, local_points2d, shed_box)
             else:
                 energy, markers = _distance_markers(binary, min_distance)
 
