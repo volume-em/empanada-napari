@@ -1,5 +1,6 @@
 import os, platform
 import zarr
+import math
 import numpy as np
 import torch
 
@@ -329,6 +330,7 @@ class Engine3d:
         self,
         model_config,
         inference_scale=1,
+        render_up=False,
         label_divisor=1000,
         median_kernel_size=5,
         stuff_area=64,
@@ -348,7 +350,6 @@ class Engine3d:
         save_panoptic=False
     ):
         # check whether GPU is available
-        # check whether GPU is available
         device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
         if use_quantized and str(device) == 'cpu' and model_config.get('model_quantized') is not None:
             model_url = model_config['model_quantized']
@@ -364,6 +365,7 @@ class Engine3d:
         self.label_divisor = label_divisor
         self.padding_factor = model_config['padding_factor']
         self.inference_scale = inference_scale
+        self.render_up = render_up
 
         # downgrade all thing classes
         if semantic_only:
@@ -420,6 +422,7 @@ class Engine3d:
     def update_params(
         self,
         inference_scale,
+        render_up,
         label_divisor,
         median_kernel_size,
         nms_threshold,
@@ -435,6 +438,7 @@ class Engine3d:
     ):
         self.label_divisor = label_divisor
         self.inference_scale = inference_scale
+        self.render_up = render_up
         self.min_size = min_size
         self.min_extent = min_extent
         self.fine_boundaries = fine_boundaries
@@ -500,12 +504,22 @@ class Engine3d:
         )
 
         # create necessary matchers and trackers
-        trackers = self.create_trackers(volume.shape, axis_name)
+        if self.render_up:
+            assert axis_name == 'xy', "Only xy axis inference is supported when rendering is turned off!"
+            shape = volume.shape
+        else:
+            d, h, w = volume.shape
+            shape = [
+                d, math.ceil(h / self.inference_scale),
+                math.ceil(w / self.inference_scale)
+            ]
+
+        trackers = self.create_trackers(shape, axis_name)
         matchers = create_matchers(
             self.thing_list, self.label_divisor,
             self.merge_iou_thr, self.merge_ioa_thr
         )
-        stack = self.create_panoptic_stack(axis_name, volume.shape)
+        stack = self.create_panoptic_stack(axis_name, shape)
 
         if platform.system() == "Darwin":
             try:
@@ -525,10 +539,11 @@ class Engine3d:
         matcher_proc.start()
 
         print(f'Predicting {axis_name}...')
+        upsampling = self.inference_scale if self.render_up else 1
         for batch in tqdm(dataloader, total=len(dataloader)):
             image = batch['image']
             size = batch['size']
-            pan_seg = self.engine(image, size, self.inference_scale)
+            pan_seg = self.engine(image, size, upsampling)
 
             if pan_seg is None:
                 # building the median queue
@@ -538,7 +553,7 @@ class Engine3d:
                 pan_seg = pan_seg.squeeze().cpu().numpy()
                 queue.put(pan_seg)
 
-        final_segs = self.engine.end(self.inference_scale)
+        final_segs = self.engine.end(upsampling)
         if final_segs:
             for i, pan_seg in enumerate(final_segs):
                 pan_seg = pan_seg.squeeze().cpu().numpy()
@@ -550,7 +565,7 @@ class Engine3d:
         matcher_proc.join()
 
         print(f'Propagating labels backward through the stack...')
-        axis_len = volume.shape[axis]
+        axis_len = shape[axis]
         for index,rle_seg in tqdm(backward_matching(rle_stack, matchers, axis_len), total=axis_len):
             update_trackers(rle_seg, index, trackers, axis, stack)
 

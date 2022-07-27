@@ -54,6 +54,7 @@ def volume_inference_widget():
 
         parameters2d_head=dict(widget_type='Label', label=f'<h3 text-align="center">2D Parameters</h3>'),
         downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Image Downsampling', tooltip='Downsampling factor to apply before inference'),
+        render_up=dict(widget_type='CheckBox', text='Upsample segmentations', value=False, tooltip='Whether to upsample segmentations to counter downsampling.'),
         confidence_thr=dict(widget_type='FloatSpinBox', value=0.5, min=0.1, max=0.9, step=0.1, label='Segmentation Confidence Thr'),
         center_confidence_thr=dict(widget_type='FloatSpinBox', value=0.1, min=0.05, max=0.9, step=0.05, label='Center Confidence Thr'),
         min_distance_object_centers=dict(widget_type='SpinBox', value=3, min=1, max=21, step=1, label='Centers Min Distance'),
@@ -88,6 +89,7 @@ def volume_inference_widget():
 
         parameters2d_head,
         downsampling,
+        render_up,
         confidence_thr,
         center_confidence_thr,
         min_distance_object_centers,
@@ -118,6 +120,9 @@ def volume_inference_widget():
         min_extent = int(min_extent)
         maximum_objects_per_class = int(maximum_objects_per_class)
 
+        if not render_up:
+            assert not orthoplane, "Orthoplane inference not supported when rendering is off!"
+
         chunk_size = chunk_size.split(',')
         if len(chunk_size) == 1:
             chunk_size = tuple(int(chunk_size[0]) for _ in range(3))
@@ -146,6 +151,7 @@ def volume_inference_widget():
             widget.engine = MultiGPUEngine3d(
                 model_config,
                 inference_scale=downsampling,
+                render_up=render_up,
                 median_kernel_size=median_slices,
                 nms_kernel=min_distance_object_centers,
                 nms_threshold=center_confidence_thr,
@@ -165,6 +171,7 @@ def volume_inference_widget():
             widget.engine = Engine3d(
                 model_config,
                 inference_scale=downsampling,
+                render_up=render_up,
                 median_kernel_size=median_slices,
                 nms_kernel=min_distance_object_centers,
                 nms_threshold=center_confidence_thr,
@@ -186,6 +193,7 @@ def volume_inference_widget():
             # update the parameters
             widget.engine.update_params(
                 inference_scale=downsampling,
+                render_up=render_up,
                 median_kernel_size=median_slices,
                 nms_kernel=min_distance_object_centers,
                 nms_threshold=center_confidence_thr,
@@ -223,6 +231,9 @@ def volume_inference_widget():
                 elif shape[-1] in [1, 3, 4]: 
                     translate = translate[:-1]
                     scale = scale[:-1]
+
+            if inference_plane == 'xy' and not render_up:
+                scale = tuple([s * downsampling for i,s in enumerate(scale) if i != 0])
 
             viewer.add_labels(
                 mask, name=f'{image_layer.name}-{description}', 
