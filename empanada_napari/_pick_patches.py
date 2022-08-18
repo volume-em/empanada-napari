@@ -343,13 +343,7 @@ def store_dataset():
                 msk = msk[:h, :w]
 
             io.imsave(os.path.join(outdir, f'{prefix}/images/{fname}'), img, check_contrast=False)
-
-            if msk.max() <= 255:
-                dtype = np.uint8
-            else:
-                dtype = np.int32
-
-            io.imsave(os.path.join(outdir, f'{prefix}/masks/{fname}'), msk.astype(dtype), check_contrast=False)
+            io.imsave(os.path.join(outdir, f'{prefix}/masks/{fname}'), msk.astype(np.int32), check_contrast=False)
 
         print('Finished saving.')
 
