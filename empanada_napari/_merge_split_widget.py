@@ -467,6 +467,89 @@ def jump_to_label():
 
     return widget
 
+def find_next_available_label():
+    import itertools
+    @magicgui(
+        call_button='Find available label',
+        layout='vertical',
+        class_id=dict(widget_type='LineEdit', label='Class ID', value='1', tooltip='Class ID for which to find next label'),
+        label_divisor=dict(widget_type='LineEdit', label='Label Divisor', value='100000', tooltip='Label divisor that separates objects of different classes.'),
+        apply3d=dict(widget_type='CheckBox', text='Labels are 3D', value=False, tooltip='Check box for working with 3D labels.'),
+        update=dict(widget_type='CheckBox', text='Update labels', value=False, tooltip='Check box to update the list of working labels'),
+    )
+
+    def widget(
+        viewer: napari.viewer.Viewer,
+        labels_layer: napari.layers.Labels,
+        class_id: str,
+        label_divisor: str,
+        apply3d: bool,
+        update: bool
+    ):
+        # convert to ints
+        class_id = int(class_id)
+        label_divisor = int(label_divisor)
+
+        assert label_divisor > 0, "Label divisor must be a positive integer!"
+
+        labels = labels_layer.data
+        if labels.ndim > 2 and not apply3d:
+            assert viewer.dims.order[0] == 0, "If not applying in 3D, must be viewing axis 0 (xy plane)!"
+            plane = viewer.dims.current_step[0]
+        else:
+            plane = 'null'
+
+        # check if the available labels are already computed
+        cond1 = 'label_queue' not in labels_layer.metadata
+        cond2 = True if cond1 else plane not in labels_layer.metadata['label_queue']
+
+        if any([cond1, cond2, update]):
+            if plane != 'null':
+                labels = labels[plane]
+
+            if isinstance(labels, da.Array):
+                label_values = []
+                for inds in itertools.product(*map(range, labels.blocks.shape)):
+                    chunk = labels.blocks[inds].compute()
+                    label_values.append(np.unique(chunk)[1:])
+
+                label_values = np.concatenate(label_values)
+            else:
+                label_values = np.unique(labels)[1:]
+
+            class_ids = np.unique(
+                np.floor_divide(label_values, label_divisor)
+            ).tolist()
+
+            # split the labels by class_id
+            label_queue = {}
+            for ci in class_ids:
+                min_id = ci * label_divisor + 1
+                max_id = (ci + 1) * label_divisor
+                possible = np.arange(min_id, max_id, dtype=np.int32)
+                used = label_values[np.logical_and(label_values >= min_id, label_values < max_id)]
+                available = np.setdiff1d(possible, used)
+                label_queue[ci] = available.tolist()
+
+            if cond1:
+                labels_layer.metadata['label_queue'] = {plane: label_queue}
+            elif cond2 or update:
+                labels_layer.metadata['label_queue'][plane] = label_queue
+
+        label_queue = labels_layer.metadata['label_queue'][plane]
+        if class_id in label_queue:
+            next_label = label_queue[class_id].pop(0) 
+        else:
+            # all labels in register are available
+            min_id = class_id * label_divisor + 1
+            max_id = (class_id + 1) * label_divisor
+            label_queue[class_id] = list(range(min_id + 1, max_id)) 
+            next_label = min_id
+
+        labels_layer.selected_label = next_label        
+
+    return widget
+
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def delete_labels_widget():
     return delete_labels, {'name': 'Delete Labels'}
@@ -482,3 +565,7 @@ def split_labels_widget():
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def jump_to_label_widget():
     return jump_to_label, {'name': 'Jump to Label'}
+
+@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+def find_next_available_label_widget():
+    return find_next_available_label, {'name': 'Find next available label'}

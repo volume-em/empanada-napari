@@ -11,7 +11,8 @@ from ._register_model import register_model_dock_widget
 from ._pick_patches import pick_patches_widget, store_dataset_widget
 from ._merge_split_widget import (
     delete_labels_widget, split_labels_widget,
-    merge_labels_widget, jump_to_label_widget
+    merge_labels_widget, jump_to_label_widget,
+    find_next_available_label_widget
 )
 from ._export_batch_segs import export_batch_segs_widget
 
@@ -28,5 +29,6 @@ __all__ = [
     'split_labels_widget',
     'delete_labels_widget',
     'jump_to_label_widget',
+    'find_next_available_label_widget',
     'export_batch_segs_widget'
 ]

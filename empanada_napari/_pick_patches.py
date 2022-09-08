@@ -213,7 +213,7 @@ def pick_patches():
             }
 
             viewer.add_image(patches, name=f'{name}_patches', metadata=metadata, visible=True)
-            viewer.add_labels(np.zeros(patches.shape, dtype=np.uint32), name=f'{name}_patches_labels', metadata=metadata, visible=True)
+            viewer.add_labels(np.zeros(patches.shape, dtype=np.int32), name=f'{name}_patches_labels', metadata=metadata, visible=True)
             viewer.dims.current_step = 0 
 
         def _show_flipbooks(*args):
@@ -231,7 +231,7 @@ def pick_patches():
 
             scale = (1, 1, 1, 1)
             viewer.add_image(flipbooks, name=f'{name}_flipbooks', metadata=metadata, visible=True, scale=scale)
-            viewer.add_labels(np.zeros(flipbooks.shape, dtype=np.uint32), name=f'{name}_flipbooks_labels', metadata=metadata, scale=scale, visible=True)
+            viewer.add_labels(np.zeros(flipbooks.shape, dtype=np.int32), name=f'{name}_flipbooks_labels', metadata=metadata, scale=scale, visible=True)
             viewer.dims.current_step = (0, 2, 0, 0)
 
         if image_layer.multiscale:

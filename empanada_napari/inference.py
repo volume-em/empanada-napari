@@ -271,7 +271,7 @@ class Engine2d:
             instance_seg[outside_mask] = 0
 
             # relabel connected components
-            instance_seg = rle.connected_components(instance_seg).astype(pan_seg.dtype)
+            instance_seg = rle.connected_components(instance_seg).astype(np.int32)
             instance_seg[instance_seg > 0] += min_id
             pan_seg[instance_seg > 0] = instance_seg[instance_seg > 0]
 
@@ -294,7 +294,7 @@ class Engine2d:
                 tile = self.preprocessor(tile)['image'].unsqueeze(0)
 
                 tile_pan_seg = self.engine(tile, tile_size, upsampling=self.inference_scale)
-                tile_pan_seg = tile_pan_seg.squeeze().cpu().numpy().astype(np.uint32)
+                tile_pan_seg = tile_pan_seg.squeeze().cpu().numpy().astype(np.int32)
                 tile_rle_seg = rle.pan_seg_to_rle_seg(
                     tile_pan_seg, self.labels, self.label_divisor, self.engine.thing_list
                 )
@@ -321,7 +321,7 @@ class Engine2d:
             image = resize_by_factor(image, self.inference_scale)
             image = self.preprocessor(image)['image'].unsqueeze(0)
             pan_seg = self.engine(image, size, upsampling=self.inference_scale)
-            return self.force_connected(pan_seg.squeeze().cpu().numpy().astype(np.uint32))
+            return self.force_connected(pan_seg.squeeze().cpu().numpy().astype(np.int32))
 
 class Engine3d:
     r"""Engine for 3D ortho-plane and stack inference"""
@@ -403,19 +403,7 @@ class Engine3d:
         else:
             self.zarr_store = None
 
-        self.set_dtype()
-
-    def set_dtype(self):
-        # maximum possible value in panoptic seg
-        max_index = self.label_divisor * (1 + max(self.labels))
-        if max_index < 2 ** 8:
-            self.dtype = np.uint8
-        elif max_index < 2 ** 16:
-            self.dtype = np.uint16
-        elif max_index < 2 ** 32:
-            self.dtype = np.uint32
-        else:
-            self.dtype = np.uint64
+        self.dtype = np.int32
 
     def update_params(
         self,
