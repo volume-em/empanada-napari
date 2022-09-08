@@ -1,5 +1,4 @@
 import math
-from tkinter import W
 import numpy as np
 from napari_plugin_engine import napari_hook_implementation
 
@@ -52,12 +51,25 @@ def test_widget():
         # create the inference engine
         if image.ndim == 3:
             print(f'Running batch mode inference on {len(image)} images.')
+            segmentations = []
             for plane, img_slice in tqdm(enumerate(image), total=len(image)):
                 if type(img_slice) == da.core.Array:
                     img_slice = img_slice.compute()
 
                 seg = engine.infer(img_slice)
-                yield seg, axis, plane, None, None
+                segmentations.append(seg)
+
+            # stack segmentations with padding
+            max_h = max(seg.shape[0] for seg in segmentations)
+            max_w = max(seg.shape[1] for seg in segmentations)
+            padded = []
+            for seg in segmentations:
+                h, w = seg.shape
+                padh, padw = max_h - h, max_w - w
+                padded.append(np.pad(seg, ((0, padh), (0, padw))))
+
+            padded = np.stack(padded, axis=0)
+            return padded
 
         elif image.ndim == 2:
             start = time()
@@ -67,9 +79,10 @@ def test_widget():
             plane = 0
             seg = engine.infer(image)
             print(f'Inference time:', time() - start)
-            yield seg, axis, plane, None, None
-
-        return
+            return seg, None, None, None, None
+        
+        else:
+            raise Exception(f'Batch mode supports 2d and 3d, got {image.ndim}d.')
 
     logo = abspath(__file__, 'resources/empanada_logo.png')
 
@@ -309,6 +322,10 @@ def test_widget():
             output_layer.visible = False 
             output_layer.visible = True
 
+        def _show_batch_stack(*args):
+            stack = args[0]
+            viewer.add_labels(stack, name=image_layer.name + '_batch_segs')
+
         # load data for currently viewer slice of chosen image layer
         if not batch_mode:
             image2d, axis, plane, y, x = _get_current_slice(image_layer)
@@ -328,7 +345,11 @@ def test_widget():
             assert not viewport, "Batch mode is not compatible with viewport inference!"
 
             test_worker = run_model_batch(widget.engine, image_layer.data)
-            test_worker.yielded.connect(_show_test_result)
+            if image_layer.data.ndim == 2:
+                test_worker.returned.connect(_show_test_result)
+            else:
+                test_worker.returned.connect(_show_batch_stack)
+
             test_worker.start()
 
     return widget
