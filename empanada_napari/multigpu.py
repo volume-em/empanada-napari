@@ -258,11 +258,15 @@ class MultiGPUEngine3d:
 
         axis_len = volume.shape[axis]
         for index,rle_seg in tqdm(backward_matching(rle_stack, matchers, axis_len), total=axis_len):
-            update_trackers(rle_seg, index, trackers, axis, stack)
+            update_trackers(rle_seg, index, trackers)
 
         finish_tracking(trackers)
         for tracker in trackers:
             filters.remove_small_objects(tracker, min_size=self.min_size)
             filters.remove_pancakes(tracker, min_span=self.min_extent)
+
+        if stack is not None:
+            print('Writing panoptic segmentation.')
+            fill_panoptic_volume(stack, trackers)
 
         return stack, trackers

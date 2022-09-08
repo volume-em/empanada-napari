@@ -133,7 +133,7 @@ def tracker_consensus(
         zarr_store = None
 
     # create the final instance segmentations
-    for class_id, class_name in zip(labels, class_names):
+    for class_id, class_name in class_names.items():
         # get the relevant trackers for the class_label
         print(f'Creating consensus segmentation for class {class_name}...')
 
@@ -552,12 +552,16 @@ class Engine3d:
         print(f'Propagating labels backward through the stack...')
         axis_len = volume.shape[axis]
         for index,rle_seg in tqdm(backward_matching(rle_stack, matchers, axis_len), total=axis_len):
-            update_trackers(rle_seg, index, trackers, axis, stack)
+            update_trackers(rle_seg, index, trackers)
 
         finish_tracking(trackers)
         for tracker in trackers:
             filters.remove_small_objects(tracker, min_size=self.min_size)
             filters.remove_pancakes(tracker, min_span=self.min_extent)
+
+        if stack is not None:
+            print('Writing panoptic segmentation.')
+            fill_panoptic_volume(stack, trackers)
 
         self.engine.reset()
 
