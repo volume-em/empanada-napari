@@ -183,8 +183,13 @@ class Engine2d:
         use_gpu=True,
         use_quantized=False
     ):
-        # check whether GPU is available
-        device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
+        # check whether GPU or M1 Mac hardware is available
+        if torch.cuda.is_available() and use_gpu:
+            device = torch.device('cuda:0')
+        elif torch.backends.mps.is_available():
+            device = torch.device('mps')
+        else:
+            device = torch.device('cpu')
         if use_quantized and str(device) == 'cpu' and model_config.get('model_quantized') is not None:
             model_url = model_config['model_quantized']
         else:
@@ -347,9 +352,13 @@ class Engine3d:
         chunk_size=(256, 256, 256),
         save_panoptic=False
     ):
-        # check whether GPU is available
-        # check whether GPU is available
-        device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
+        # check whether GPU or M1 Mac hardware is available
+        if torch.cuda.is_available() and use_gpu:
+            device = torch.device('cuda:0')
+        elif torch.backends.mps.is_available():
+            device = torch.device('mps')
+        else:
+            device = torch.device('cpu')
         if use_quantized and str(device) == 'cpu' and model_config.get('model_quantized') is not None:
             model_url = model_config['model_quantized']
         else:
