@@ -64,7 +64,7 @@ def volume_inference_widget():
         median_slices=dict(widget_type='ComboBox', choices=[1, 3, 5, 7, 9, 11], value=3, label='Median Filter Size', tooltip='Median filter size'),
         min_size=dict(widget_type='SpinBox', value=500, min=0, max=1e6, step=100, label='Min Size (Voxels)'),
         min_extent=dict(widget_type='SpinBox', value=5, min=0, max=1000, step=1, label='Min Box Extent'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value='1000000', label='Max objects per class in 3D'),
+        maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class in 3D'),
         inference_plane=dict(widget_type='ComboBox', choices=['xy', 'xz', 'yz'], value='xy', label='Inference plane', tooltip='Image plane along which to run inference. Overwritten, if using ortho-plane.'),
 
         parameters_ortho_head=dict(widget_type='Label', label=f'<h3 text-align="center">Ortho-plane Parameters (Optional)</h3>'),

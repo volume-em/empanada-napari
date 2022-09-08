@@ -253,7 +253,7 @@ def split_labels():
         energy = -distance
 
         # handle irritating quirk of peak_local_max
-        # when any dimension has length 1
+        # when any dimension is 1
         if any([s == 1 for s in distance.shape]):
             coords = peak_local_max(np.squeeze(distance), min_distance=min_distance)
             markers = np.zeros(np.squeeze(distance).shape, dtype=bool)
@@ -324,98 +324,98 @@ def split_labels():
             print('No labels selected!')
             return
 
-        label_id = label_ids[0]
+        # group local_points by label_ids
+        labels_points = {
+            label_id: local_points[label_ids == label_id] 
+            for label_id in np.unique(label_ids)
+        }
 
-        if len(np.unique(label_ids)) > 1:
-            print('Split operation only supports 1 label at a time.')
-            # drop points corresponding to extraneous labels
-            local_points = local_points[label_ids == label_id]
+        for label_id, local_points in labels_points.items():
+            if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
+                shed_box = [rp.bbox for rp in regionprops(labels) if rp.label == label_id][0]
+                binary = crop_and_binarize(labels, shed_box, label_id)
 
-        if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
-            shed_box = [rp.bbox for rp in regionprops(labels) if rp.label == label_id][0]
-            binary = crop_and_binarize(labels, shed_box, label_id)
+                if points_as_markers:
+                    energy, markers = _point_markers(binary, local_points, shed_box)
+                else:
+                    energy, markers = _distance_markers(binary, min_distance)
 
-            if points_as_markers:
-                energy, markers = _point_markers(binary, local_points, shed_box)
-            else:
-                energy, markers = _distance_markers(binary, min_distance)
+                marker_ids = np.unique(markers)[1:]
 
-            marker_ids = np.unique(markers)[1:]
+                if len(marker_ids) > 1:
+                    new_labels = watershed(energy, markers, mask=binary)
+                    slices = _box_to_slice(shed_box)
 
-            if len(marker_ids) > 1:
-                new_labels = watershed(energy, markers, mask=binary)
-                slices = _box_to_slice(shed_box)
+                    max_label = labels.max()
+                    labels[slices][binary] = new_labels[binary] + max_label
+                    print(f'Split label {label_id} to {marker_ids + max_label}')
+                else:
+                    print('Nothing to split.')
 
-                max_label = labels.max()
-                labels[slices][binary] = new_labels[binary] + max_label
-                print(f'Split label {label_id} to {marker_ids + max_label}')
-            else:
-                print('Nothing to split.')
+            elif labels.ndim == 3:
+                # get the current viewer axis
+                axis = viewer.dims.order[0]
+                plane = local_points[0][axis]
+                labels2d = take(labels, plane, axis)
+                assert all(local_pt[axis] == plane for local_pt in local_points)
 
-        elif labels.ndim == 3:
-            # get the current viewer axis
-            axis = viewer.dims.order[0]
-            plane = local_points[0][axis]
-            labels2d = take(labels, plane, axis)
-            assert all(local_pt[axis] == plane for local_pt in local_points)
+                shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
+                binary = crop_and_binarize(labels2d, shed_box, label_id)
 
-            shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
-            binary = crop_and_binarize(labels2d, shed_box, label_id)
+                if points_as_markers:
+                    local_points2d = []
+                    for lp in local_points:
+                        local_points2d.append([p for i,p in enumerate(lp) if i != axis])
+                    energy, markers = _point_markers(binary, local_points2d, shed_box)
+                else:
+                    energy, markers = _distance_markers(binary, min_distance)
 
-            if points_as_markers:
-                local_points2d = []
-                for lp in local_points:
-                    local_points2d.append([p for i,p in enumerate(lp) if i != axis])
-                energy, markers = _point_markers(binary, local_points2d, shed_box)
-            else:
-                energy, markers = _distance_markers(binary, min_distance)
+                marker_ids = np.unique(markers)[1:]
 
-            marker_ids = np.unique(markers)[1:]
+                if len(marker_ids) > 1:
+                    new_labels = watershed(energy, markers, mask=binary)
+                    slices = _box_to_slice(shed_box)
 
-            if len(marker_ids) > 1:
-                new_labels = watershed(energy, markers, mask=binary)
-                slices = _box_to_slice(shed_box)
+                    max_label = labels2d.max()
+                    labels2d[slices][binary] = new_labels[binary] + max_label
+                    print(f'Split label {label_id} to {marker_ids + max_label}')
+                else:
+                    print('Nothing to split.')
 
-                max_label = labels2d.max()
-                labels2d[slices][binary] = new_labels[binary] + max_label
-                print(f'Split label {label_id} to {marker_ids + max_label}')
-            else:
-                print('Nothing to split.')
+                put(labels, local_points[0][axis], labels2d, axis)
 
-            put(labels, local_points[0][axis], labels2d, axis)
+            elif labels.ndim == 4:
+                # get the current viewer axes
+                assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+                assert viewer.dims.order[1] == 1, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+                plane1 = local_points[0][0]
+                plane2 = local_points[0][1]
+                assert all(local_pt[0] == plane1 for local_pt in local_points)
+                assert all(local_pt[1] == plane2 for local_pt in local_points)
+            
+                labels2d = labels[plane1, plane2]
 
-        elif labels.ndim == 4:
-            # get the current viewer axes
-            assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
-            assert viewer.dims.order[1] == 1, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
-            plane1 = local_points[0][0]
-            plane2 = local_points[0][1]
-            assert all(local_pt[0] == plane1 for local_pt in local_points)
-            assert all(local_pt[1] == plane2 for local_pt in local_points)
-        
-            labels2d = labels[plane1, plane2]
+                shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
+                binary = crop_and_binarize(labels2d, shed_box, label_id)
 
-            shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
-            binary = crop_and_binarize(labels2d, shed_box, label_id)
+                if points_as_markers:
+                    energy, markers = _point_markers(binary, local_points, shed_box)
+                else:
+                    energy, markers = _distance_markers(binary, min_distance)
 
-            if points_as_markers:
-                energy, markers = _point_markers(binary, local_points, shed_box)
-            else:
-                energy, markers = _distance_markers(binary, min_distance)
+                marker_ids = np.unique(markers)[1:]
 
-            marker_ids = np.unique(markers)[1:]
+                if len(marker_ids) > 1:
+                    new_labels = watershed(energy, markers, mask=binary)
+                    slices = _box_to_slice(shed_box)
 
-            if len(marker_ids) > 1:
-                new_labels = watershed(energy, markers, mask=binary)
-                slices = _box_to_slice(shed_box)
-
-                max_label = labels2d.max()
-                labels2d[slices][binary] = new_labels[binary] + max_label
-                print(f'Split label {label_id} to {marker_ids + max_label}')
-            else:
-                print('Nothing to split.')
-                
-            labels[local_points[0][0], local_points[0][1]] = labels2d
+                    max_label = labels2d.max()
+                    labels2d[slices][binary] = new_labels[binary] + max_label
+                    print(f'Split label {label_id} to {marker_ids + max_label}')
+                else:
+                    print('Nothing to split.')
+                    
+                labels[local_points[0][0], local_points[0][1]] = labels2d
 
         labels_layer.data = labels
         points_layer.data = []
