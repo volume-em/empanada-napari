@@ -452,8 +452,6 @@ class Engine3d:
         else:
             self.zarr_store = None
 
-        self.set_dtype()
-
     def create_trackers(self, shape3d, axis_name):
         trackers = [
             InstanceTracker(label, self.label_divisor, shape3d, axis_name)

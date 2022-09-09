@@ -201,9 +201,6 @@ def volume_inference_widget():
             )
 
         def _new_layers(mask, description, instances=None):
-            if type(mask) == zarr.core.Array:
-                mask = da.from_zarr(mask)
-
             metadata = {}
             if instances is not None:
                 for label, label_attrs in instances.items():

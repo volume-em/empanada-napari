@@ -185,19 +185,7 @@ class MultiGPUEngine3d:
         else:
             self.zarr_store = None
 
-        self.set_dtype()
-
-    def set_dtype(self):
-        # maximum possible value in panoptic seg
-        max_index = self.config['matcher_params']['label_divisor'] * (1 + max(self.labels))
-        if max_index < 2 ** 8:
-            self.dtype = np.uint8
-        elif max_index < 2 ** 16:
-            self.dtype = np.uint16
-        elif max_index < 2 ** 32:
-            self.dtype = np.uint32
-        else:
-            self.dtype = np.uint64
+        self.dtype = np.int32
 
     def create_trackers(self, shape3d, axis_name):
         label_divisor = self.config['engine_params']['label_divisor']
