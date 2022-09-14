@@ -348,7 +348,6 @@ class Engine3d:
         save_panoptic=False
     ):
         # check whether GPU is available
-        # check whether GPU is available
         device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
         if use_quantized and str(device) == 'cpu' and model_config.get('model_quantized') is not None:
             model_url = model_config['model_quantized']
