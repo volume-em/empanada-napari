@@ -4,6 +4,7 @@ from napari import Viewer
 from napari.layers import Image 
 from napari_plugin_engine import napari_hook_implementation
 from magicgui import magicgui
+from qtpy.QtWidgets import QScrollArea
 
 def volume_inference_widget():
     from napari.qt.threading import thread_worker
@@ -47,6 +48,7 @@ def volume_inference_widget():
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 3D Inference',
         layout='vertical',
+        scrollable=True,
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0'),
         use_quantized=dict(widget_type='CheckBox', text='Use quantized model', value=device_count() == 0, tooltip='If checked, use the quantized model for faster CPU inference.'),
@@ -306,6 +308,11 @@ def volume_inference_widget():
             worker.returned.connect(start_postprocess_worker)
 
         worker.start()
+
+    # make the scroll available
+    scroll = QScrollArea()
+    scroll.setWidget(widget._widget._qwidget)
+    widget._widget._qwidget = scroll
 
     return widget
 
