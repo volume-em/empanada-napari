@@ -5,7 +5,7 @@ from napari_plugin_engine import napari_hook_implementation
 import napari
 from napari import Viewer
 from napari.layers import Image, Labels
-from magicgui import magicgui
+from magicgui import magicgui, widgets
 
 #from magicgui.tqdm import tqdm
 from tqdm import tqdm
@@ -108,6 +108,7 @@ def test_widget():
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 2D Inference',
         layout='vertical',
+        pbar={'visible': False, 'max': 0, 'label': 'Running...'},
         **gui_params
     )
     def widget(
@@ -128,7 +129,8 @@ def test_widget():
         use_quantized,
         viewport,
         output_to_layer,
-        output_layer: Labels
+        output_layer: Labels,
+        pbar: widgets.ProgressBar
     ):
         if output_to_layer:
             assert output_layer is not None, "Must select an output layer or uncheck Output to layer!"
@@ -300,6 +302,8 @@ def test_widget():
             viewer.add_labels(seg, name=f'empanada_seg_2d', visible=True, translate=tuple(translate))
             viewer.layers[-1].scale = image_layer.scale
 
+            pbar.hide()
+
         def _store_test_result(*args):
             seg, axis, plane, _, _ = args[0]
 
@@ -322,9 +326,12 @@ def test_widget():
             output_layer.visible = False 
             output_layer.visible = True
 
+            pbar.hide()
+
         def _show_batch_stack(*args):
             stack = args[0]
             viewer.add_labels(stack, name=image_layer.name + '_batch_segs')
+            pbar.hide()
 
         # load data for currently viewer slice of chosen image layer
         if not batch_mode:
@@ -351,6 +358,8 @@ def test_widget():
                 test_worker.returned.connect(_show_batch_stack)
 
             test_worker.start()
+
+        pbar.show()
 
     return widget
 

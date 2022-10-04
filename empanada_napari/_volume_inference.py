@@ -3,8 +3,8 @@ import napari
 from napari import Viewer
 from napari.layers import Image 
 from napari_plugin_engine import napari_hook_implementation
-from magicgui import magicgui
-from qtpy.QtWidgets import QScrollArea
+from magicgui import magicgui, widgets
+#from qtpy.QtWidgets import QScrollArea
 
 def volume_inference_widget():
     from napari.qt.threading import thread_worker
@@ -48,7 +48,8 @@ def volume_inference_widget():
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 3D Inference',
         layout='vertical',
-        scrollable=True,
+        #scrollable=True,
+        
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()), value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
         use_gpu=dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1, tooltip='If checked, run on GPU 0'),
         use_quantized=dict(widget_type='CheckBox', text='Use quantized model', value=device_count() == 0, tooltip='If checked, use the quantized model for faster CPU inference.'),
@@ -78,6 +79,7 @@ def volume_inference_widget():
         storage_head=dict(widget_type='Label', label=f'<h3 text-align="center">Zarr Storage (optional)</h3>'),
         store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Directory', mode='d', tooltip='location to store segmentations on disk'),
         chunk_size=dict(widget_type='LineEdit', value='256', label='Chunk size', tooltip='Chunk size of the zarr array. Integer or comma separated list of 3 integers.'),
+        pbar={'visible': False, 'max': 0, 'label': 'Running...'},
     )
     def widget(
         viewer: napari.viewer.Viewer,
@@ -111,7 +113,9 @@ def volume_inference_widget():
 
         storage_head,
         store_dir,
-        chunk_size
+        chunk_size,
+
+        pbar: widgets.ProgressBar
     ):
         # load the model config
         model_config_name = model_config
@@ -229,6 +233,8 @@ def volume_inference_widget():
                 scale=scale
             )
 
+            pbar.hide()
+
         def _new_segmentation(*args):
             mask = args[0][0]
             axis_name = args[0][1]
@@ -309,10 +315,12 @@ def volume_inference_widget():
 
         worker.start()
 
+        pbar.show()
+
     # make the scroll available
-    scroll = QScrollArea()
-    scroll.setWidget(widget._widget._qwidget)
-    widget._widget._qwidget = scroll
+    #scroll = QScrollArea()
+    #scroll.setWidget(widget._widget._qwidget)
+    #widget._widget._qwidget = scroll
 
     return widget
 
