@@ -17,6 +17,9 @@ contributions:
   - id: empanada-napari.delete_labels
     title: Create Delete Labels
     python_name: empanada_napari._merge_split_widget:delete_labels
+  - id: empanada-napari.morph_labels
+    title: Create Morph Labels
+    python_name: empanada_napari._merge_split_widget:morph_labels
   - id: empanada-napari.split_labels
     title: Create Split Labels
     python_name: empanada_napari._merge_split_widget:split_labels
@@ -56,6 +59,8 @@ contributions:
     display_name: Merge Labels
   - command: empanada-napari.delete_labels
     display_name: Delete Labels
+  - command: empanada-napari.morph_labels
+    display_name: Morph Labels
   - command: empanada-napari.split_labels
     display_name: Split Labels
   - command: empanada-napari.jump_to_label

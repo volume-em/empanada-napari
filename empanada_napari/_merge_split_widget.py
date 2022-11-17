@@ -4,6 +4,7 @@ from empanada.array_utils import crop_and_binarize, take, put
 from skimage.measure import regionprops
 from scipy import ndimage as ndi
 from skimage.segmentation import watershed
+from skimage import morphology as morph
 from skimage.feature import peak_local_max
 from skimage import draw
 import napari
@@ -20,6 +21,153 @@ def map_points(world_points, labels_layer):
         local_points.append(tuple([int(c) for c in labels_layer.world_to_data(pt)]))
     
     return local_points
+
+def _box_to_slice(shed_box):
+    n = len(shed_box)
+    n_dim = n // 2
+
+    slices = []
+    for i in range(n_dim):
+        s = shed_box[i]
+        e = shed_box[i + n_dim]
+        slices.append(slice(s, e))
+
+    return tuple(slices)
+
+def morph_labels():
+
+    ops = {
+        'Dilate': morph.binary_dilation,
+        'Erode': morph.binary_erosion,
+        'Close': morph.binary_closing,
+        'Open': morph.binary_opening,
+        'Fill holes': morph.remove_small_holes
+    }
+
+    def _pad_box(shed_box, shape, radius=0):
+        n = len(shed_box)
+        n_dim = n // 2
+
+        padded = [0] * len(shed_box)
+        for i in range(n_dim):
+            s = max(0, shed_box[i] - radius)
+            e = min(shape[i], shed_box[i + n_dim] + radius)
+            padded[i] = s
+            padded[i + n_dim] = e
+
+        return tuple(padded)
+
+    @magicgui(
+        call_button='Apply',
+        layout='vertical',
+        operation=dict(widget_type='ComboBox', choices=list(ops.keys()), value=list(ops.keys())[0], label='Operation', tooltip='Morphological operation to apply'),
+        radius=dict(widget_type='Slider', label='Radius', min=1, max=7, value=1, tooltip='Radius of selem for morphology op.'),
+        hole_size=dict(widget_type='LineEdit', value='64', label='Hole size', tooltip='Max hole size to fill if op is fill hole'),
+        apply3d=dict(widget_type='CheckBox', text='Apply in 3D', value=False, tooltip='Check box to apply the operation in 3D.')
+    )
+
+    def widget(
+        viewer: napari.viewer.Viewer,
+        labels_layer: napari.layers.Labels,
+        points_layer: napari.layers.Points,
+        operation: int,
+        radius: bool,
+        hole_size: str,
+        apply3d: bool
+    ):
+        hole_size = int(hole_size)
+        if points_layer is None:
+            points_layer = viewer.add_points([])
+            points_layer.mode = 'ADD'
+            print('Add points!')
+            return
+
+        labels = labels_layer.data
+        world_points = points_layer.data
+
+        if apply3d and labels.ndim != 3:
+            print('Apply 3D checked, but labels are not 3D. Ignoring.')
+
+        # get points as indices in local coordinates
+        local_points = map_points(world_points, labels_layer)
+
+        if type(labels) == da.core.Array:
+            label_ids = [labels[pt].compute() for pt in local_points]
+        else:
+            label_ids = [labels[pt].item() for pt in local_points]
+
+        # drop any label_ids equal to 0 in case point
+        # was placed on the background
+        label_ids = list(filter(lambda x: x > 0, label_ids))
+
+        if len(label_ids) == 0:
+            print('No labels selected!')
+            return
+
+        if operation == 'Fill holes':
+            op_arg = hole_size
+        elif labels.ndim == 3 and apply3d:
+            op_arg = morph.ball(radius)
+        else:
+            op_arg = morph.disk(radius)
+
+        for label_id in label_ids:
+            if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
+                shed_box = [rp.bbox for rp in regionprops(labels) if rp.label == label_id][0]
+                shed_box = _pad_box(shed_box, labels.shape, radius)
+                slices = _box_to_slice(shed_box)
+                
+                # apply op
+                binary = crop_and_binarize(labels, shed_box, label_id)
+
+                labels[slices][binary] = 0
+                binary = ops[operation](binary, op_arg)
+                labels[slices][binary] = label_id
+
+            elif labels.ndim == 3:
+                # get the current viewer axis
+                axis = viewer.dims.order[0]
+                plane = local_points[0][axis]
+                labels2d = take(labels, plane, axis)
+                assert all(local_pt[axis] == plane for local_pt in local_points)
+
+                shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
+                shed_box = _pad_box(shed_box, labels.shape, radius)
+                slices = _box_to_slice(shed_box)
+
+                binary = crop_and_binarize(labels2d, shed_box, label_id)
+                labels2d[slices][binary] = 0
+                binary = ops[operation](binary, op_arg)
+                labels2d[slices][binary] = label_id
+
+                put(labels, plane, labels2d, axis)
+
+            elif labels.ndim == 4:
+                # get the current viewer axes
+                assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+                assert viewer.dims.order[1] == 1, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
+                plane1 = local_points[0][0]
+                plane2 = local_points[0][1]
+                assert all(local_pt[0] == plane1 for local_pt in local_points)
+                assert all(local_pt[1] == plane2 for local_pt in local_points)
+            
+                labels2d = labels[plane1, plane2]
+
+                shed_box = [rp.bbox for rp in regionprops(labels2d) if rp.label == label_id][0]
+                shed_box = _pad_box(shed_box, labels.shape, radius)
+                slices = _box_to_slice(shed_box)
+
+                binary = crop_and_binarize(labels2d, shed_box, label_id)
+                labels2d[slices][binary] = 0
+                binary = ops[operation](binary, op_arg)
+                labels2d[slices][binary] = label_id
+                    
+                labels[local_points[0][0], local_points[0][1]] = labels2d
+
+        labels_layer.data = labels
+        points_layer.data = []
+
+    return widget
 
 
 def delete_labels():
@@ -233,16 +381,6 @@ def merge_labels():
     return widget
 
 def split_labels():
-
-    def _box_to_slice(shed_box):
-        n = len(shed_box)
-        n_dim = n//2
-
-        slices = []
-        for i in range(n_dim):
-            slices.append(slice(shed_box[i], shed_box[i+n_dim]))
-
-        return tuple(slices)
 
     def _translate_point_in_box(point, shed_box):
         n_dim = len(shed_box) // 2
@@ -549,6 +687,10 @@ def find_next_available_label():
         labels_layer.selected_label = next_label        
 
     return widget
+
+@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+def morph_labels_widget():
+    return morph_labels, {'name': 'Morph Labels'}
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def delete_labels_widget():
