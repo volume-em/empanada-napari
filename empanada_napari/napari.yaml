@@ -11,6 +11,9 @@ contributions:
   - id: empanada-napari.volume_inference_widget
     title: Create 3D Inference
     python_name: empanada_napari._volume_inference:volume_inference_widget
+  - id: empanada-napari.focus_window
+    title: Create Focus Window
+    python_name: empanada_napari._merge_split_widget:focus_window
   - id: empanada-napari.merge_labels
     title: Create Merge Labels
     python_name: empanada_napari._merge_split_widget:merge_labels
@@ -55,6 +58,8 @@ contributions:
     display_name: Export 2D segmentations
   - command: empanada-napari.volume_inference_widget
     display_name: 3D Inference
+  - command: empanada-napari.focus_window
+    display_name: Focus Window
   - command: empanada-napari.merge_labels
     display_name: Merge Labels
   - command: empanada-napari.delete_labels

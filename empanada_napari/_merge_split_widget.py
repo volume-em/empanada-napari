@@ -7,6 +7,7 @@ from skimage.segmentation import watershed
 from skimage import morphology as morph
 from skimage.feature import peak_local_max
 from skimage import draw
+import math
 import napari
 import numpy as np
 import dask.array as da
@@ -33,6 +34,71 @@ def _box_to_slice(shed_box):
         slices.append(slice(s, e))
 
     return tuple(slices)
+
+def focus_window():
+    @magicgui(
+        call_button='Focus',
+        layout='vertical',
+        focus_name=dict(widget_type='LineEdit', value='focus', label='Focus name', tooltip='Layer name to use or create for focus window.'),
+    )
+
+    def widget(
+        viewer: napari.viewer.Viewer,
+        image_layer: napari.layers.Image,
+        focus_name: str
+    ):
+        shape = image_layer.data.shape
+        assert len(shape) == 3
+
+        max_dim = 384
+        d0 = math.ceil(shape[1] / math.ceil(shape[1] / max_dim))
+        d1 = math.ceil(shape[2] / math.ceil(shape[2] / max_dim))
+
+        chunk_dim = (shape[0], d0, d1)
+        chunked_shape = tuple([math.ceil(s / cd) for s,cd in zip(shape, chunk_dim)])
+
+        if focus_name in viewer.layers:
+            focus = viewer.layers[focus_name].data
+            assert focus.dtype == 'bool', "Focus layer must be a boolean image!"
+            if focus.shape != shape:
+                raise Exception(f'Focus layer {focus_name} exists and is not the same shape as the chosen image!')
+
+            # get current chunk from metadata
+            current_chunk = viewer.layers[focus_name].metadata.get('focus_chunk')
+            if current_chunk is None:
+               z, y, x = np.where(focus == True) 
+               assert z.min() == 0 and z.max() == shape[0] - 1
+               current_chunk = np.ravel_multi_index(
+                    (0, y.min() // chunk_dim[1], x.min() // chunk_dim[2]), chunked_shape
+                )
+
+            # focus on the next chunk
+            focus_chunk = current_chunk + 1
+        else:
+            focus = np.zeros(shape, dtype='bool')
+            viewer.add_image(focus, name=focus_name, opacity=0.3)
+            focus_chunk = 0
+
+        if focus_chunk >= math.prod(chunked_shape):
+            print(f'All focus windows are complete!')
+            return
+
+        # get the next chunk
+        cindices = np.unravel_index(focus_chunk, chunked_shape)
+        slices = []
+        for i,d,r in zip(cindices, chunk_dim, shape):
+            s = int(i * d)
+            e = min(s + d, r)
+            slices.append(slice(s, e))
+
+        # turn off old and turn on new
+        focus[focus] = False
+        focus[tuple(slices)] = True
+
+        viewer.layers[focus_name].data = focus
+        viewer.layers[focus_name].metadata['focus_chunk'] = focus_chunk
+
+    return widget
 
 def morph_labels():
 
@@ -689,8 +755,12 @@ def find_next_available_label():
     return widget
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+def focus_widget():
+    return focus_window, {'name': 'focus window'}
+
+@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def morph_labels_widget():
-    return morph_labels, {'name': 'Morph Labels'}
+    return morph_labels, {'name': 'morph labels'}
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def delete_labels_widget():
