@@ -59,14 +59,13 @@ def focus_window():
 
         if focus_name in viewer.layers:
             focus = viewer.layers[focus_name].data
-            assert focus.dtype == 'bool', "Focus layer must be a boolean image!"
             if focus.shape != shape:
                 raise Exception(f'Focus layer {focus_name} exists and is not the same shape as the chosen image!')
-
+            
             # get current chunk from metadata
             current_chunk = viewer.layers[focus_name].metadata.get('focus_chunk')
             if current_chunk is None:
-               z, y, x = np.where(focus == True) 
+               z, y, x = np.where(focus == 255) 
                assert z.min() == 0 and z.max() == shape[0] - 1
                current_chunk = np.ravel_multi_index(
                     (0, y.min() // chunk_dim[1], x.min() // chunk_dim[2]), chunked_shape
@@ -75,7 +74,7 @@ def focus_window():
             # focus on the next chunk
             focus_chunk = current_chunk + 1
         else:
-            focus = np.zeros(shape, dtype='bool')
+            focus = np.zeros(shape, dtype=np.uint8)
             viewer.add_image(focus, name=focus_name, opacity=0.3)
             focus_chunk = 0
 
@@ -92,8 +91,8 @@ def focus_window():
             slices.append(slice(s, e))
 
         # turn off old and turn on new
-        focus[focus] = False
-        focus[tuple(slices)] = True
+        focus[focus == 255] = 0
+        focus[tuple(slices)] = 255
 
         viewer.layers[focus_name].data = focus
         viewer.layers[focus_name].metadata['focus_chunk'] = focus_chunk
