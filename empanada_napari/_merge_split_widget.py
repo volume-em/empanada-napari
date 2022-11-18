@@ -35,6 +35,11 @@ def _box_to_slice(shed_box):
 
     return tuple(slices)
 
+def _box_to_global_indices(box_indices, shed_box):
+    n_dim = len(shed_box) // 2
+    return tuple([box_indices[i] + shed_box[i] for i in range(n_dim)])
+
+
 def focus_window():
     @magicgui(
         call_button='Focus',
@@ -184,10 +189,15 @@ def morph_labels():
                 
                 # apply op
                 binary = crop_and_binarize(labels, shed_box, label_id)
-
-                labels[slices][binary] = 0
+                og_global_indices = _box_to_global_indices(np.where(binary), shed_box)
                 binary = ops[operation](binary, op_arg)
-                labels[slices][binary] = label_id
+                new_global_indices = _box_to_global_indices(np.where(binary), shed_box)
+
+                # update labels
+                if operation in ['Erode', 'Open', 'Close']:
+                    labels_layer.data_setitem(og_global_indices, 0)
+                
+                labels_layer.data_setitem(new_global_indices, label_id)
 
             elif labels.ndim == 3:
                 # get the current viewer axis
@@ -206,6 +216,7 @@ def morph_labels():
                 labels2d[slices][binary] = label_id
 
                 put(labels, plane, labels2d, axis)
+                labels_layer.data = labels
 
             elif labels.ndim == 4:
                 # get the current viewer axes
@@ -228,8 +239,8 @@ def morph_labels():
                 labels2d[slices][binary] = label_id
                     
                 labels[local_points[0][0], local_points[0][1]] = labels2d
+                labels_layer.data = labels
 
-        labels_layer.data = labels
         points_layer.data = []
 
     return widget
@@ -273,7 +284,9 @@ def delete_labels():
 
         if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
             for l in label_ids:
-                labels[labels == l] = 0
+                indices = np.where(labels == l)
+                labels_layer.data_setitem(indices, 0)
+
         elif labels.ndim == 3:
             # get the current viewer axis
             axis = viewer.dims.order[0]
@@ -285,6 +298,8 @@ def delete_labels():
                     labels2d[labels2d == l] = 0
 
                 put(labels, local_pt[axis], labels2d, axis)
+
+            labels_layer.data = labels
         elif labels.ndim == 4:
             # get the current viewer axes
             assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
@@ -297,8 +312,9 @@ def delete_labels():
                     labels2d[labels2d == l] = 0
 
                 labels[local_pt[0], local_pt[1]] = labels2d
+
+            labels_layer.data = labels
             
-        labels_layer.data = labels
         points_layer.data = []
 
         print(f'Removed labels {label_ids}')
@@ -410,7 +426,9 @@ def merge_labels():
             # replace labels with minimum of the selected labels
             for l in label_ids:
                 if l != new_label_id:
-                    labels[labels == l] = new_label_id
+                    indices = np.where(labels == l)
+                    labels_layer.data_setitem(indices, new_label_id)
+
         elif labels.ndim == 3:
             # take labels along axis
             for local_pt in local_points:
@@ -421,6 +439,8 @@ def merge_labels():
                         labels2d[labels2d == l] = new_label_id
 
                 put(labels, local_pt[axis], labels2d, axis)
+
+            labels_layer.data = labels
         elif labels.ndim == 4:
             # get the current viewer axes
             assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
@@ -435,7 +455,8 @@ def merge_labels():
 
                 labels[local_pt[0], local_pt[1]] = labels2d
 
-        labels_layer.data = labels
+            labels_layer.data = labels
+
         if points_layer is not None:
             points_layer.data = []
         if shapes_layer is not None:
@@ -550,8 +571,12 @@ def split_labels():
                     slices = _box_to_slice(shed_box)
 
                     max_label = labels.max()
-                    labels[slices][binary] = new_labels[binary] + max_label
-                    print(f'Split label {label_id} to {marker_ids + max_label}')
+
+                    for local_label_id in np.unique(new_labels)[1:]:
+                        local_indices = np.where(new_labels == local_label_id)
+                        global_indices = _box_to_global_indices(local_indices, shed_box)
+                        labels_layer.data_setitem(global_indices, local_label_id + max_label)
+
                 else:
                     print('Nothing to split.')
 
@@ -586,6 +611,7 @@ def split_labels():
                     print('Nothing to split.')
 
                 put(labels, local_points[0][axis], labels2d, axis)
+                labels_layer.data = labels
 
             elif labels.ndim == 4:
                 # get the current viewer axes
@@ -619,8 +645,8 @@ def split_labels():
                     print('Nothing to split.')
                     
                 labels[local_points[0][0], local_points[0][1]] = labels2d
+                labels_layer.data = labels
 
-        labels_layer.data = labels
         points_layer.data = []
 
     return widget
