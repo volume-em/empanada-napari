@@ -11,6 +11,7 @@ import math
 import napari
 import numpy as np
 import dask.array as da
+from scipy import ndimage as ndi 
 
 
 def map_points(world_points, labels_layer):
@@ -111,7 +112,8 @@ def morph_labels():
         'Erode': morph.binary_erosion,
         'Close': morph.binary_closing,
         'Open': morph.binary_opening,
-        'Fill holes': morph.remove_small_holes
+        'Fill holes': morph.remove_small_holes,
+        'Median Filter': ndi.median_filter,
     }
 
     def _pad_box(shed_box, shape, radius=0):
@@ -180,6 +182,9 @@ def morph_labels():
             op_arg = morph.ball(radius)
         else:
             op_arg = morph.disk(radius)
+        
+        if operation == 'Median Filter':
+            op_arg = radius
 
         for label_id in label_ids:
             if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
