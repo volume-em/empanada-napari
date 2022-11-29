@@ -189,15 +189,19 @@ def morph_labels():
                 
                 # apply op
                 binary = crop_and_binarize(labels, shed_box, label_id)
-                og_global_indices = _box_to_global_indices(np.where(binary), shed_box)
-                binary = ops[operation](binary, op_arg)
-                new_global_indices = _box_to_global_indices(np.where(binary), shed_box)
 
-                # update labels
-                if operation in ['Erode', 'Open', 'Close']:
-                    labels_layer.data_setitem(og_global_indices, 0)
+                local_indices_before = np.where(binary.ravel())
+                binary = ops[operation](binary, op_arg)
                 
-                labels_layer.data_setitem(new_global_indices, label_id)
+                local_indices_after = np.where(binary.ravel())
+                local_indices = np.union1d(local_indices_before, local_indices_after)
+                local_indices = np.unravel_index(local_indices, binary.shape)
+                
+                global_indices = _box_to_global_indices(local_indices, shed_box)
+                binary = binary.astype(labels.dtype)
+                binary[binary > 0] = label_id
+                
+                labels_layer.data_setitem(global_indices, binary[local_indices])
 
             elif labels.ndim == 3:
                 # get the current viewer axis
@@ -283,10 +287,9 @@ def delete_labels():
         label_ids = list(filter(lambda x: x > 0, label_ids))
 
         if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
-            for l in label_ids:
-                indices = np.where(labels == l)
-                labels_layer.data_setitem(indices, 0)
-
+            indices = np.isin(labels, label_ids).nonzero()
+            labels_layer.data_setitem(indices, 0)
+            
         elif labels.ndim == 3:
             # get the current viewer axis
             axis = viewer.dims.order[0]
@@ -424,10 +427,10 @@ def merge_labels():
 
         if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
             # replace labels with minimum of the selected labels
-            for l in label_ids:
-                if l != new_label_id:
-                    indices = np.where(labels == l)
-                    labels_layer.data_setitem(indices, new_label_id)
+            
+            indices = np.isin(labels, label_ids).nonzero()
+            labels_layer.data_setitem(indices, new_label_id)
+            
 
         elif labels.ndim == 3:
             # take labels along axis
@@ -555,6 +558,7 @@ def split_labels():
         }
 
         for label_id, local_points in labels_points.items():
+            
             if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
                 shed_box = [rp.bbox for rp in regionprops(labels) if rp.label == label_id][0]
                 binary = crop_and_binarize(labels, shed_box, label_id)
@@ -571,12 +575,14 @@ def split_labels():
                     slices = _box_to_slice(shed_box)
 
                     max_label = labels.max()
-
-                    for local_label_id in np.unique(new_labels)[1:]:
-                        local_indices = np.where(new_labels == local_label_id)
-                        global_indices = _box_to_global_indices(local_indices, shed_box)
-                        labels_layer.data_setitem(global_indices, local_label_id + max_label)
-
+                    
+                    new_labels[new_labels > 0] += max_label
+                    
+                    local_indices = np.where(new_labels > 0)
+                    global_indices = _box_to_global_indices(local_indices, shed_box)
+                    
+                    labels_layer.data_setitem(global_indices, new_labels[local_indices])
+                    
                 else:
                     print('Nothing to split.')
 
