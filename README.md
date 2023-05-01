@@ -35,7 +35,7 @@ napari
 
 Look for empanada-napari under the "Plugins" menu.
 
-![empanada](images/demo.gif)
+![empanada](https://github.com/volume-em/empanada-napari/raw/main/images/demo.gif)
 
 ## GPU Support
 
