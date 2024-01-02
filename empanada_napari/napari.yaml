@@ -50,6 +50,12 @@ contributions:
   - id: empanada-napari.get_info_widget
     title: Get model info
     python_name: empanada_napari._finetune:get_info_widget
+  - id: empanada-napari.export_model_widget
+    title: Export a model
+    python_name: empanada_napari._export_import_models:export_model_widget
+  - id: empanada-napari.import_model_widget
+    title: Import a model
+    python_name: empanada_napari._export_import_models:import_model_widget
 
   widgets:
   - command: empanada-napari.test_widget
@@ -84,3 +90,7 @@ contributions:
     display_name: Register a model
   - command: empanada-napari.get_info_widget
     display_name: Get model info
+  - command: empanada-napari.export_model_widget
+    display_name: Export a model
+  - command: empanada-napari.import_model_widget
+    display_name: Import a model
