@@ -100,6 +100,7 @@ def import_model_widget():
 
         add_new_model(model_name, new_yaml, target_models_name)
         shutil.rmtree(tmp_folder)
+        print(f'Model imported to {target_models_name}')
 
     return widget
 
