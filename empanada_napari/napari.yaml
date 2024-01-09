@@ -23,6 +23,9 @@ contributions:
   - id: empanada-napari.split_labels
     title: Create Split Labels
     python_name: empanada_napari._merge_split_widget:split_labels
+  - id: empanada-napari.label_counter_widget
+    title: Count Labels
+    python_name: empanada_napari._label_counter_widget:label_counter_widget
   - id: empanada-napari.jump_to_label
     title: Jump to label
     python_name: empanada_napari._merge_split_widget:jump_to_label
@@ -63,6 +66,8 @@ contributions:
     display_name: Morph Labels
   - command: empanada-napari.split_labels
     display_name: Split Labels
+  - command: empanada-napari.label_counter_widget
+    display_name: Count Labels
   - command: empanada-napari.jump_to_label
     display_name: Jump to label
   - command: empanada-napari.find_next_available_label

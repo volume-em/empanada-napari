@@ -611,7 +611,7 @@ def find_next_available_label():
         call_button='Find available label',
         layout='vertical',
         class_id=dict(widget_type='LineEdit', label='Class ID', value='1', tooltip='Class ID for which to find next label'),
-        label_divisor=dict(widget_type='LineEdit', label='Label Divisor', value='100000', tooltip='Label divisor that separates objects of different classes.'),
+        label_divisor=dict(widget_type='LineEdit', label='Label Divisor', value='10000', tooltip='Label divisor that separates objects of different classes.'),
         apply3d=dict(widget_type='CheckBox', text='Labels are 3D', value=False, tooltip='Check box for working with 3D labels.'),
         update=dict(widget_type='CheckBox', text='Update labels', value=False, tooltip='Check box to update the list of working labels'),
     )
