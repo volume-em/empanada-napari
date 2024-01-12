@@ -10,26 +10,6 @@ from openpyxl import Workbook, load_workbook
 import numpy as np
 import dask.array as da
 import itertools
-from scipy import ndimage as ndi
-
-"""
-def save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, labels, plane):
-    workbook = Workbook()
-
-    for class_num, class_name in class_names.items():
-        filename = f'{class_name}_labels.xlsx'
-        file_path = os.path.join(save_dir, filename)
-
-    if label_type == 'Current image':
-        current_image = plane
-        sheet_name = f'Image {current_image}'
-        sheet = workbook.create_sheet(title=sheet_name)
-        sheet['A1'] = 'Label ID'
-        for class_id, label_ids in label_queue.items():
-            print(f'Class num {class_num} VS class id {class_id}')
-            for row_num, label_id in enumerate(label_ids, start=2):
-                sheet.cell(row=row_num, column=1, value=label_id)
-                """
 
 
 def save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, plane=None):
@@ -48,8 +28,6 @@ def save_label_lists(label_type, class_names, label_queue, save_dir, labels_laye
                     for row_num, label_id in enumerate(label_ids, start=2):
                         sheet.cell(row=row_num, column=1, value=label_id)
 
-                # filename = f'{class_name}_labels.xlsx'
-                # file_path = os.path.join(save_dir, filename)
                 workbook.save(file_path)
             try:
                 default_sheet = workbook['Sheet']
@@ -78,19 +56,6 @@ def save_label_lists(label_type, class_names, label_queue, save_dir, labels_laye
             workbook.save(file_path)
         except:
             pass
-
-
-
-def save_label_lists_multiprocess(label_type, label_queue_list, save_dir, labels_layer, labels, plane):
-    pool = Pool()
-    args = [(label_type, label_queue_list, save_dir, labels_layer, labels, plane)]
-    pool.starmap(save_label_lists, args)
-    pool.close()
-    pool.join()
-
-    # default_sheet = workbook['Sheet']
-    # workbook.remove(default_sheet)
-    # workbook.save(file_path)
 
 
 def create_xlsx_from_label_queue_list(class_names, label_queues_list, save_dir, labels):
@@ -234,10 +199,6 @@ def label_counter_widget():
                     print(f'Labels in class {class_id} ({class_names[class_id]}): {label_list}')
                     print(f'Total number of labels in class {class_id} ({class_names[class_id]}): {label_count}')
 
-                # if export_xlsx:
-                #     os.makedirs(save_dir, exist_ok=True)
-                #     save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, labels, plane)
-                #     print(f'Saved Excel file to {save_dir}')
             else:
                 print('No labels found in current slice!')
 
