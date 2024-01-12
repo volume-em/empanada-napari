@@ -12,7 +12,6 @@ import dask.array as da
 import itertools
 from scipy import ndimage as ndi
 
-
 """
 def save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, labels, plane):
     workbook = Workbook()
@@ -33,32 +32,36 @@ def save_label_lists(label_type, class_names, label_queue, save_dir, labels_laye
                 """
 
 
-def save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, labels, plane):
-    workbook = Workbook()
-
+def save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, plane=None):
     if label_type == 'Current image':
-        for class_name in class_names.items():
+        for class_name in class_names.values():
             filename = f'{class_name}_labels.xlsx'
             file_path = os.path.join(save_dir, filename)
+            workbook = Workbook()
             current_image = plane
             sheet_name = f'Image {current_image}'
             sheet = workbook.create_sheet(title=sheet_name)
             sheet['A1'] = 'Label ID'
             for class_id, label_ids in label_queue.items():
-                class_name = class_names[class_id]
-                for row_num, label_id in enumerate(label_ids, start=2):
-                    sheet.cell(row=row_num, column=1, value=label_id)
+                curr_class_name = class_names[class_id]
+                if curr_class_name == class_name:
+                    for row_num, label_id in enumerate(label_ids, start=2):
+                        sheet.cell(row=row_num, column=1, value=label_id)
 
                 # filename = f'{class_name}_labels.xlsx'
                 # file_path = os.path.join(save_dir, filename)
                 workbook.save(file_path)
-            default_sheet = workbook['Sheet']
-            workbook.remove(default_sheet)
-            workbook.save(file_path)
+            try:
+                default_sheet = workbook['Sheet']
+                workbook.remove(default_sheet)
+                workbook.save(file_path)
+            except:
+                pass
                 # print(f'Saved Excel file for class {class_id} ({class_name}) to {file_path}')
 
-    elif label_type == '3D volume or z stack':
+    elif label_type == '3D volume or z-stack':
         sheet_name = labels_layer.name
+        workbook = Workbook()
         sheet = workbook.create_sheet(title=sheet_name)
         sheet['A1'] = 'Label ID'
         for class_id, label_ids in label_queue.items():
@@ -67,10 +70,15 @@ def save_label_lists(label_type, class_names, label_queue, save_dir, labels_laye
                 sheet.cell(row=row_num, column=1, value=label_id)
             filename = f'{class_name}_labels.xlsx'
             file_path = os.path.join(save_dir, filename)
+            workbook.save(file_path)
 
-        # default_sheet = workbook['Sheet']
-        # workbook.remove(default_sheet)
-        # workbook.save(file_path)
+        try:
+            default_sheet = workbook['Sheet']
+            workbook.remove(default_sheet)
+            workbook.save(file_path)
+        except:
+            pass
+
 
 
 def save_label_lists_multiprocess(label_type, label_queue_list, save_dir, labels_layer, labels, plane):
@@ -85,37 +93,45 @@ def save_label_lists_multiprocess(label_type, label_queue_list, save_dir, labels
     # workbook.save(file_path)
 
 
-def create_xlsx_from_label_queue_list(class_names, label_queue_list, save_dir, labels):
-    workbook = Workbook()
-    for class_num, class_name in class_names.items():
+def create_xlsx_from_label_queue_list(class_names, label_queues_list, save_dir, labels):
+    for class_name in class_names.values():
         filename = f'{class_name}_labels.xlsx'
         file_path = os.path.join(save_dir, filename)
+        workbook = Workbook()
 
         for slice_num in range(labels.shape[0]):
-            label_queue = label_queue_list[slice_num]
+            label_queue = label_queues_list[slice_num]
             for class_id, label_ids in label_queue.items():
-                sheet_name = f'Image {slice_num}'
+                if class_names[class_id] == class_name:
+                    sheet_name = f'Image {slice_num}'
 
-                if sheet_name in workbook.sheetnames:
-                    sheet = workbook[sheet_name]
-                    # Clear the existing contents of the sheet
-                    sheet.delete_rows(2, sheet.max_row)
-                else:
-                    # Create a new sheet
-                    sheet = workbook.create_sheet(title=sheet_name)
-                sheet['A1'] = 'Label ID'
+                    if sheet_name in workbook.sheetnames:
+                        sheet = workbook[sheet_name]
+                        # Clear the existing contents of the sheet
+                        sheet.delete_rows(2, sheet.max_row)
+                    else:
+                        # Create a new sheet
+                        sheet = workbook.create_sheet(title=sheet_name)
+                    sheet['A1'] = 'Label ID'
 
-                for row_num, label_id in enumerate(label_ids, start=1):
-                    sheet.cell(row=row_num + 1, column=1, value=label_id)
-
-    default_sheet = workbook['Sheet']
-    workbook.remove(default_sheet)
-    workbook.save(file_path)
+                    for row_num, label_id in enumerate(label_ids, start=1):
+                        sheet.cell(row=row_num + 1, column=1, value=label_id)
+        try:
+            default_sheet = workbook['Sheet']
+            workbook.remove(default_sheet)
+            workbook.save(file_path)
+        except:
+            pass
+        workbook.save(file_path)
 
 
 def count_labels(label_values, label_divisor):
-    class_ids = np.unique(np.floor_divide(label_values, label_divisor)).tolist()
     label_queue = {}
+    if label_divisor == 0:
+        label_queue[1] = label_values.tolist()
+        return label_queue, [1]
+
+    class_ids = np.unique(np.floor_divide(label_values, label_divisor)).tolist()
     for ci in class_ids:
         min_id = ci * label_divisor + 1
         max_id = (ci + 1) * label_divisor
@@ -171,7 +187,7 @@ def label_counter_widget():
                 os.makedirs(save_dir)
 
         label_divisor = int(label_divisor)
-        assert label_divisor > 0, "Label divisor must be a positive integer!"
+        assert label_divisor > -1, "Label divisor must be a non-negative integer!"
 
         labels = labels_layer.data
 
@@ -188,14 +204,13 @@ def label_counter_widget():
 
         class_ids = []
         class_names = {}
-        for seg_class in label_text.split(','):
+        for seg_class in label_text.split():
             class_id, class_name = seg_class.split(',')
             class_num = class_id.strip()
             class_name = class_name.strip()
             class_names[int(class_num)] = class_name
 
         print(f'Class names: {class_names}')
-
 
         if isinstance(labels, da.Array):
             label_values = []
@@ -228,20 +243,18 @@ def label_counter_widget():
 
             if export_xlsx:
                 os.makedirs(save_dir, exist_ok=True)
-                save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, labels, plane)
+                save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, plane)
                 print(f'Saved Excel file to {save_dir}')
 
         elif label_type == '2D tile stack':
             class_ids_list = []
             label_queues_list = []
-            labels_list = []
 
             for slice_num in range(labels.shape[0]):
                 label_slice = labels[slice_num]
                 label_queue, class_ids = count_labels(np.unique(label_slice)[1:], label_divisor)
                 label_queues_list.append(label_queue)
                 class_ids_list.append(class_ids)
-                unique_labels = set()
 
                 if label_queue and class_ids:
                     for class_id in class_ids:
@@ -251,22 +264,13 @@ def label_counter_widget():
                         else:
                             print(f'No labels in class {class_id}')
 
-                labels_list.append(list(unique_labels))
-
             if export_xlsx:
                 os.makedirs(save_dir, exist_ok=True)
-                create_xlsx_from_label_queue_list(label_queues_list, save_dir, labels_layer, labels)
+                create_xlsx_from_label_queue_list(class_names, label_queues_list, save_dir, labels)
                 print(f'Saved Excel file to {save_dir}')
 
         elif label_type == '3D volume or z-stack':
-            class_ids_list = []
-            label_queues_list = []
-            labels_list = []
-
             label_queue, class_ids = count_labels(np.unique(labels)[1:], label_divisor)
-            label_queues_list.append(label_queue)
-            class_ids_list.append(class_ids)
-            unique_labels = set()
 
             if label_queue and class_ids:
                 for class_id in class_ids:
@@ -277,11 +281,9 @@ def label_counter_widget():
                     else:
                         print(f'No labels in class {class_id}')
 
-            labels_list.append(list(unique_labels))
-
             if export_xlsx:
                 os.makedirs(save_dir, exist_ok=True)
-                create_xlsx_file(label_queue, save_dir, labels_layer)
+                save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer)
                 print(f'Saved Excel file to {save_dir}')
 
     return widget
