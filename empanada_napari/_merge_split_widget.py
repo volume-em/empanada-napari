@@ -421,7 +421,10 @@ def split_labels():
         layout='vertical',
         min_distance=dict(widget_type='Slider', label='Minimum Distance', min=1, max=100, value=10, tooltip='Min Distance between Markers'),
         points_as_markers=dict(widget_type='CheckBox', text='Use points as markers', value=False, tooltip='Whether to use the placed points as markers for watershed. If checked, Min. Distance is ignored.'),
-        apply3d=dict(widget_type='CheckBox', text='Apply in 3D', value=False, tooltip='Check box to split label in 3D.')
+        apply3d=dict(widget_type='CheckBox', text='Apply in 3D', value=False, tooltip='Check box to split label in 3D.'),
+        new_label_header=dict(widget_type='Label', label=f'<h3 text-align="center">Select new label value (optional)</h3>'),
+        new_label=dict(widget_type='CheckBox', text='Apply new label', value=False, tooltip='Whether to apply the new label to the labels layer'),
+        start_label=dict(widget_type='LineEdit', label='Start new label from:', value='', tooltip='Label to start from')
     )
 
     def widget(
@@ -430,7 +433,10 @@ def split_labels():
         points_layer: napari.layers.Points,
         min_distance: int,
         points_as_markers: bool,
-        apply3d
+        apply3d,
+        new_label_header,
+        new_label: bool,
+        start_label: int
     ):
         if points_layer is None:
             points_layer = viewer.add_points([])
@@ -484,7 +490,11 @@ def split_labels():
                     new_labels = watershed(energy, markers, mask=binary)
                     slices = _box_to_slice(shed_box)
 
-                    max_label = labels.max()
+                    if new_label:
+                        new_label_id = int(start_label) - 1
+                        max_label = new_label_id
+                    else:
+                        max_label = labels.max()
                     labels[slices][binary] = new_labels[binary] + max_label
                     print(f'Split label {label_id} to {marker_ids + max_label}')
                 else:
@@ -514,7 +524,11 @@ def split_labels():
                     new_labels = watershed(energy, markers, mask=binary)
                     slices = _box_to_slice(shed_box)
 
-                    max_label = labels2d.max()
+                    if new_label:
+                        new_label_id = int(start_label) - 1
+                        max_label = new_label_id
+                    else:
+                        max_label = labels2d.max()
                     labels2d[slices][binary] = new_labels[binary] + max_label
                     print(f'Split label {label_id} to {marker_ids + max_label}')
                 else:
@@ -547,7 +561,11 @@ def split_labels():
                     new_labels = watershed(energy, markers, mask=binary)
                     slices = _box_to_slice(shed_box)
 
-                    max_label = labels2d.max()
+                    if new_label:
+                        new_label_id = int(start_label) - 1
+                        max_label = new_label_id
+                    else:
+                        max_label = labels2d.max()
                     labels2d[slices][binary] = new_labels[binary] + max_label
                     print(f'Split label {label_id} to {marker_ids + max_label}')
                 else:

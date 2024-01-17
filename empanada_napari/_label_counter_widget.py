@@ -3,10 +3,9 @@ from magicgui import magicgui
 import napari
 from napari import Viewer
 from napari.layers import Labels
-from multiprocessing import Pool
 import pandas as pd
 import os
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 import numpy as np
 import dask.array as da
 import itertools
@@ -165,9 +164,6 @@ def label_counter_widget():
         if plane != 'null':
             labels = labels[plane]
 
-        print(plane)
-
-        class_ids = []
         class_names = {}
         for seg_class in label_text.split():
             class_id, class_name = seg_class.split(',')
@@ -196,11 +192,12 @@ def label_counter_widget():
                 valid_label_counts = [len(label_list) for label_list in valid_label_lists]
 
                 for class_id, label_list, label_count in zip(valid_class_ids, valid_label_lists, valid_label_counts):
-                    print(f'Labels in class {class_id} ({class_names[class_id]}): {label_list}')
-                    print(f'Total number of labels in class {class_id} ({class_names[class_id]}): {label_count}')
+                    if label_count > 0:
+                        print(f'Label IDs in class {class_id} ({class_names[class_id]}): {label_list}')
+                        print(f'Total number of label IDs in class {class_id} ({class_names[class_id]}): {label_count}')
 
-            else:
-                print('No labels found in current slice!')
+                    else:
+                        print(f'No label IDs in class {class_id} ({class_names[class_id]}) found in current slice!')
 
             if export_xlsx:
                 os.makedirs(save_dir, exist_ok=True)
@@ -221,9 +218,10 @@ def label_counter_widget():
                     for class_id in class_ids:
                         if class_id in label_queue:
                             label_list = np.unique((label_queue[class_id]))
-                            print(f'Total number of labels in class {class_id} in image {slice_num}:', len(label_list))
-                        else:
-                            print(f'No labels in class {class_id}')
+                            if len(label_list) > 0:
+                                print(f'Total number of label IDs in class {class_id} ({class_names[class_id]}) in image {slice_num}:', len(label_list))
+                            else:
+                                print(f'No label IDs in class {class_id} ({class_names[class_id]}) in image {slice_num}!')
 
             if export_xlsx:
                 os.makedirs(save_dir, exist_ok=True)
@@ -237,10 +235,11 @@ def label_counter_widget():
                 for class_id in class_ids:
                     if class_id in label_queue:
                         label_list = np.unique((label_queue[class_id]))
-                        print(f'Total number of labels in class {class_id} in volume:', len(label_list))
+                        if len(label_list) > 0:
+                            print(f'Total number of label IDs in class {class_id} ({class_names[class_id]}) in volume:', len(label_list))
 
-                    else:
-                        print(f'No labels in class {class_id}')
+                        else:
+                            print(f'No label IDs in class {class_id} ({class_names[class_id]}) in volume!')
 
             if export_xlsx:
                 os.makedirs(save_dir, exist_ok=True)

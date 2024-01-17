@@ -57,7 +57,7 @@ contributions:
     title: Import a model
     python_name: empanada_napari._export_import_models:import_model_widget
   - id: empanada-napari.filter_small_labels
-    title: Filter small labels
+    title: Filter labels
     python_name: empanada_napari._filter_small_labels:filter_small_labels
 
   widgets:
@@ -98,5 +98,5 @@ contributions:
   - command: empanada-napari.import_model_widget
     display_name: Import a model
   - command: empanada-napari.filter_small_labels
-    display_name: Filter small labels
+    display_name: Filter labels
 
