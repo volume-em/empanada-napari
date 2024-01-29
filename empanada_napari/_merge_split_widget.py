@@ -422,9 +422,9 @@ def split_labels():
         min_distance=dict(widget_type='Slider', label='Minimum Distance', min=1, max=100, value=10, tooltip='Min Distance between Markers'),
         points_as_markers=dict(widget_type='CheckBox', text='Use points as markers', value=False, tooltip='Whether to use the placed points as markers for watershed. If checked, Min. Distance is ignored.'),
         apply3d=dict(widget_type='CheckBox', text='Apply in 3D', value=False, tooltip='Check box to split label in 3D.'),
-        new_label_header=dict(widget_type='Label', label=f'<h3 text-align="center">Select new label value (optional)</h3>'),
-        new_label=dict(widget_type='CheckBox', text='Apply new label', value=False, tooltip='Whether to apply the new label to the labels layer'),
-        start_label=dict(widget_type='LineEdit', label='Start new label from:', value='', tooltip='Label to start from')
+        # new_label_header=dict(widget_type='Label', label=f'<h3 text-align="center">Specify new label value (optional)</h3>'),
+        new_label=dict(widget_type='CheckBox', text='Specify new label IDs (optional)', value=False, tooltip='Whether to slect the new label IDs for the split labels'),
+        start_label=dict(widget_type='LineEdit', label='Start new label IDs from:', value='', tooltip='The label ID to start the new label IDs from.'),
     )
 
     def widget(
@@ -434,7 +434,8 @@ def split_labels():
         min_distance: int,
         points_as_markers: bool,
         apply3d,
-        new_label_header,
+
+        # new_label_header,
         new_label: bool,
         start_label: int
     ):
@@ -495,8 +496,14 @@ def split_labels():
                         max_label = new_label_id
                     else:
                         max_label = labels.max()
-                    labels[slices][binary] = new_labels[binary] + max_label
-                    print(f'Split label {label_id} to {marker_ids + max_label}')
+
+                    # Check if any of the new label IDs are already in use
+                    new_labels_exist = any(labels.max() >= (marker_ids + max_label))
+                    if new_labels_exist:
+                        print(f'Label ID {start_label} is already in use. Please specify new label IDs.')
+                    else:
+                        labels[slices][binary] = new_labels[binary] + max_label
+                        print(f'Split label {label_id} to {marker_ids + max_label}')
                 else:
                     print('Nothing to split.')
 
@@ -529,8 +536,13 @@ def split_labels():
                         max_label = new_label_id
                     else:
                         max_label = labels2d.max()
-                    labels2d[slices][binary] = new_labels[binary] + max_label
-                    print(f'Split label {label_id} to {marker_ids + max_label}')
+                        # Check if any of the new label IDs are already in use
+                    new_labels_exist = any(labels2d.max() >= (marker_ids + max_label))
+                    if new_labels_exist:
+                        print(f'Label ID {start_label} is already in use. Please specify new label IDs.')
+                    else:
+                        labels2d[slices][binary] = new_labels[binary] + max_label
+                        print(f'Split label {label_id} to {marker_ids + max_label}')
                 else:
                     print('Nothing to split.')
 
@@ -566,8 +578,13 @@ def split_labels():
                         max_label = new_label_id
                     else:
                         max_label = labels2d.max()
-                    labels2d[slices][binary] = new_labels[binary] + max_label
-                    print(f'Split label {label_id} to {marker_ids + max_label}')
+                    # Check if any of the new label IDs are already in use
+                    new_labels_exist = any(labels2d.max() >= (marker_ids + max_label))
+                    if new_labels_exist:
+                        print(f'Label ID {start_label} is already in use. Please specify new label IDs.')
+                    else:
+                        labels2d[slices][binary] = new_labels[binary] + max_label
+                        print(f'Split label {label_id} to {marker_ids + max_label}')
                 else:
                     print('Nothing to split.')
                     
