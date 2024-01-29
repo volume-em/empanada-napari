@@ -17,21 +17,47 @@ def filter_out_small_label_areas(img, minimum_area_allowed):
     rp = pd.DataFrame(rp)
     rp = rp.sort_values(by='area')
 
+    smallest_label = rp['label'].iloc[0]
+    smallest_area = int(rp['area'].iloc[0])
     # only keep area values less than 1000
     rp = rp[rp['area'] <= minimum_area_allowed]
 
     # remove label from image
+    labels_removed = []
     for label in rp['label']:
         img = remove_label_from_image(img, label)
+        labels_removed.append(label)
 
-    return img
+    if len(labels_removed) == 0:
+        print("No labels were removed.")
+        print(
+            f"The label ID corresponding to the smallest area is {smallest_label} with an area of {smallest_area} pixels/voxels.")
+    else:
+        num_removed = len(labels_removed)
+        print(f"The following label IDs were removed: {labels_removed}")
+        print(f"Total number of label IDs removed: {num_removed} ")
+
+    return img, len(labels_removed)
 
 
-def filter_out_small_label_areas_by_idx(labels, minimum_area_allowed, plane):
-    img = labels[plane]
-    img = filter_out_small_label_areas(img, minimum_area_allowed)
-    labels[plane] = img
-    return labels
+def remove_boundary_labels(labels):
+    labels_removed = []
+    labels_kept = clear_border(labels)
+
+    for label in np.unique(labels):
+        if label not in np.unique(labels_kept):
+            labels_removed.append(label)
+
+    if len(labels_removed) == 0:
+        print("No label IDs were removed.")
+    else:
+        num_removed = len(labels_removed)
+        print(f"The following label Ids were removed: {labels_removed}")
+        print(f"Total number of label IDs removed: {num_removed} ")
+
+    labels = labels_kept
+
+    return labels, len(labels_removed)
 
 
 def filter_small_labels():
@@ -43,7 +69,7 @@ def filter_small_labels():
 
     apply_options = {
         'Current image': 'Current image',
-        '2D tile stack': '2D tile stack',
+        '2D patches': '2D patches',
         '3D image or z-stack': '3D image or z-stack'
     }
 
@@ -51,7 +77,7 @@ def filter_small_labels():
         "call_button": 'Remove labels',
         "layout": 'vertical',
         "apply_to": dict(widget_type='RadioButtons', label='Apply to:', choices=list(apply_options.keys()), value=list(apply_options.keys())[0], tooltip='Apply to a single image,a 2D tile stack or a 3D image/z-stack.'),
-        "min_area": dict(widget_type='SpinBox', label='Minimum pixel/voxel area cutoff:', value=100, min=1, max=10000000, tooltip='Minimum area of labels [px^2] to keep.'),
+        "min_area": dict(widget_type='SpinBox', label='Minimum pixel/voxel area:', value=100, min=1, max=10000000, tooltip='Minimum area of labels [px^2] to keep.'),
         "remove_opt": dict(widget_type='RadioButtons', label='Remove:', choices=list(remove_options.keys()), value=list(remove_options.keys())[0], tooltip='Either remove boundary labels or small pixel labels.'),
     }
 
@@ -72,31 +98,33 @@ def filter_small_labels():
         if apply_to == '3D image or z-stack' and labels.ndim != 3:
             print('Apply 3D checked, but labels are not 3D. Ignoring.')
             return
-
+        labels_removed = []
         # print(labels.shape)
         if apply_to == 'Current image':
             plane = viewer.dims.current_step[0]
 
             if remove_opt == 'Small labels':
-                labels = filter_out_small_label_areas_by_idx(labels, min_area, plane)
+                labels[plane], labels_removed = filter_out_small_label_areas(labels[plane], min_area)
             elif remove_opt == 'Boundary labels':
-                labels[plane] = clear_border(labels[plane])
+                labels[plane], labels_removed = remove_boundary_labels(labels[plane])
 
-        elif labels.ndim == 3 and apply_to == '2D tile stack':
+        elif labels.ndim == 3 and apply_to == '2D patches':
             for label in tqdm(range(labels.shape[0])):
                 if remove_opt == 'Small labels':
-                    labels[label] = filter_out_small_label_areas(labels[label], min_area)
+                    labels[label], labels_removed = filter_out_small_label_areas(labels[label], min_area)
                 elif remove_opt == 'Boundary labels':
-                    labels[label] = clear_border(labels[label])
+                    labels[label], labels_removed = remove_boundary_labels(labels[label])
 
         else:
             if remove_opt == 'Small labels':
-                labels = filter_out_small_label_areas(labels, min_area)
+                labels, labels_removed = filter_out_small_label_areas(labels, min_area)
             elif remove_opt == 'Boundary labels':
-                labels = clear_border(labels)
-
-        labels = np.squeeze(labels)
-        viewer.add_labels(labels, name=labels_layer.name + '_filtered', visible=True)
+                labels, labels_removed = remove_boundary_labels(labels)
+        if labels_removed == 0:
+            return
+        else:
+            labels = np.squeeze(labels)
+            viewer.add_labels(labels, name=f'Labels_removed_' + labels_layer.name, visible=True)
 
     return widget
 
