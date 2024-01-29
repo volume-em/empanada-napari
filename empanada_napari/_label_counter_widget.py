@@ -14,11 +14,18 @@ import itertools
 def save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, plane=None):
     if label_type == 'Current image':
         for class_name in class_names.values():
-            filename = f'{class_name}_labels.xlsx'
+            if plane == 'null':
+                filename = f'{class_name}_label_ids.xlsx'
+                sheet_name = labels_layer.name
+            else:
+                filename = f'{class_name}_label_ids_image_{plane}.xlsx'
+                current_image = plane
+                sheet_name = f'Image {current_image}'
             file_path = os.path.join(save_dir, filename)
+            if os.path.exists(file_path):
+                new_filename = f'{class_name}_label_ids_image_{plane}_updated.xlsx'
+                file_path = os.path.join(save_dir, new_filename)
             workbook = Workbook()
-            current_image = plane
-            sheet_name = f'Image {current_image}'
             sheet = workbook.create_sheet(title=sheet_name)
             sheet['A1'] = 'Label ID'
             for class_id, label_ids in label_queue.items():
@@ -45,8 +52,11 @@ def save_label_lists(label_type, class_names, label_queue, save_dir, labels_laye
             class_name = class_names[class_id]
             for row_num, label_id in enumerate(label_ids, start=2):
                 sheet.cell(row=row_num, column=1, value=label_id)
-            filename = f'{class_name}_labels.xlsx'
+            filename = f'{class_name}_volume_label_ids.xlsx'
             file_path = os.path.join(save_dir, filename)
+            if os.path.exists(file_path):
+                new_filename = f'{class_name}_volume_label_ids_updated.xlsx'
+                file_path = os.path.join(save_dir, new_filename)
             workbook.save(file_path)
 
         try:
@@ -59,8 +69,11 @@ def save_label_lists(label_type, class_names, label_queue, save_dir, labels_laye
 
 def create_xlsx_from_label_queue_list(class_names, label_queues_list, save_dir, labels):
     for class_name in class_names.values():
-        filename = f'{class_name}_labels.xlsx'
+        filename = f'{class_name}_patch_label_ids.xlsx'
         file_path = os.path.join(save_dir, filename)
+        if os.path.exists(file_path):
+            new_filename = f'{class_name}_patch_label_ids_updated.xlsx'
+            file_path = os.path.join(save_dir, new_filename)
         workbook = Workbook()
 
         for slice_num in range(labels.shape[0]):
@@ -108,24 +121,24 @@ def count_labels(label_values, label_divisor):
 def label_counter_widget():
     label_params = {
         'Current image': 'Current image',
-        '2D tile stack': '2D tile stack',
+        '2D patches': '2D patches',
         '3D volume or z-stack': '3D volume or z-stack',
     }
 
     @magicgui(
-        call_button='Count Labels',
+        call_button='Count Label IDs (see terminal)',
         layout='vertical',
         label_type=dict(widget_type='RadioButtons', choices=list(label_params.keys()),
                         value=list(label_params.keys())[0], label='Apply to:',
                         tooltip='Calculate number of instance labels'),
-        label_text=dict(widget_type='TextEdit', label='Dataset labels', value='1,mito',
-                        tooltip='Separate line for each class. Each line must be {class_number},{class_name}'),
-        label_divisor=dict(widget_type='LineEdit', label='Label Divisor', value='10000',
+        label_text=dict(widget_type='TextEdit', label='Define dataset labels:', value='class_number,class_name',
+                        tooltip='Use a separate line for each class. Each line must be {class_number},{class_name (nospaces)}'),
+        label_divisor=dict(widget_type='LineEdit', label='Label Divisor', value='0',
                            tooltip='Label divisor that separates objects of different classes.'),
 
-        save_op_head=dict(widget_type='Label', label=f'<h3 text-align="center">Export Excel File (optional)</h3>',
-                          tooltip='Export csv file with labels counted by class.'),
-        export_xlsx=dict(widget_type='CheckBox', value=False, label='Export .xlsx file',
+        save_op_head=dict(widget_type='Label', label=f'<h3 text-align="center">Export Label IDs (optional)</h3>',
+                          tooltip='Export excel file with label IDs listed by class.'),
+        export_xlsx=dict(widget_type='CheckBox', value=False, label='Export list of label IDs (.xlsx file)',
                          tooltip='Export list of label IDs as an excel file.'),
         save_dir=dict(widget_type='FileEdit', value='', label='Save directory', mode='d',
                       tooltip='Directory in which to save label counter excel file.'),
@@ -143,7 +156,7 @@ def label_counter_widget():
 
     ):
         if export_xlsx:
-            folder_name = f'{labels_layer.name}_label_counts'
+            folder_name = f'{labels_layer.name}_label_ids'
             folder_path = os.path.join(save_dir, folder_name)
             # Create the save directory if it doesn't exist
             save_dir = folder_path
@@ -204,13 +217,23 @@ def label_counter_widget():
                 save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer, plane)
                 print(f'Saved Excel file to {save_dir}')
 
-        elif label_type == '2D tile stack':
+        elif label_type == '2D patches':
             class_ids_list = []
             label_queues_list = []
 
             for slice_num in range(labels.shape[0]):
                 label_slice = labels[slice_num]
-                label_queue, class_ids = count_labels(np.unique(label_slice)[1:], label_divisor)
+
+                if isinstance(label_slice, da.Array):
+                    slice_labels = []
+                    for sl in itertools.product(*map(range, label_slice.blocks.shape)):
+                        chunk = label_slice.blocks[sl].compute()
+                        slice_labels.append(np.unique(chunk)[1:])
+                    slice_labels = np.concatenate(slice_labels)
+                else:
+                    slice_labels = np.unique(label_slice)[1:]
+
+                label_queue, class_ids = count_labels(slice_labels, label_divisor)
                 label_queues_list.append(label_queue)
                 class_ids_list.append(class_ids)
 
@@ -229,7 +252,7 @@ def label_counter_widget():
                 print(f'Saved Excel file to {save_dir}')
 
         elif label_type == '3D volume or z-stack':
-            label_queue, class_ids = count_labels(np.unique(labels)[1:], label_divisor)
+            label_queue, class_ids = count_labels(label_values, label_divisor)
 
             if label_queue and class_ids:
                 for class_id in class_ids:
