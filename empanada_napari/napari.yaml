@@ -33,10 +33,10 @@ contributions:
     title: Find next available label
     python_name: empanada_napari._merge_split_widget:find_next_available_label
   - id: empanada-napari.pick_patches
-    title: Pick training patches
+    title: Pick finetune/training patches
     python_name: empanada_napari._pick_patches:pick_patches
   - id: empanada-napari.store_dataset
-    title: Save training dataset
+    title: Save finetune/training patches
     python_name: empanada_napari._pick_patches:store_dataset
   - id: empanada-napari.finetuning_widget
     title: Finetune a model
@@ -82,9 +82,9 @@ contributions:
   - command: empanada-napari.find_next_available_label
     display_name: Find next available label
   - command: empanada-napari.pick_patches
-    display_name: Pick training patches
+    display_name: Pick finetune/training patches
   - command: empanada-napari.store_dataset
-    display_name: Store training dataset
+    display_name: Save finetune/training patches
   - command: empanada-napari.finetuning_widget
     display_name: Finetune a model
   - command: empanada-napari.training_widget
