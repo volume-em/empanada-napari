@@ -82,6 +82,9 @@ def export_model_widget():
         os.remove(new_yaml)
         os.remove(os.path.join(export_path, new_model_path))
 
+        if quantized_path:
+            os.remove(os.path.join(export_path, new_quantized_path))
+
         print(f'Model exported to {out_path}')
         warnings.filterwarnings("default")
 
