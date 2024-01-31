@@ -140,6 +140,7 @@ def label_counter_widget():
                           tooltip='Export excel file with label IDs listed by class.'),
         export_xlsx=dict(widget_type='CheckBox', value=False, label='Export list of label IDs (.xlsx file)',
                          tooltip='Export list of label IDs as an excel file.'),
+        folder_name=dict(widget_type='LineEdit', value='', label='Folder name'),
         save_dir=dict(widget_type='FileEdit', value='', label='Save directory', mode='d',
                       tooltip='Directory in which to save label counter excel file.'),
     )
@@ -152,11 +153,12 @@ def label_counter_widget():
 
             save_op_head,
             export_xlsx: bool,
+            folder_name: str,
             save_dir: str
 
     ):
         if export_xlsx:
-            folder_name = f'{labels_layer.name}_label_ids'
+            # folder_name = f'{labels_layer.name}_label_ids'
             folder_path = os.path.join(save_dir, folder_name)
             # Create the save directory if it doesn't exist
             save_dir = folder_path
