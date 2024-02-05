@@ -18,12 +18,12 @@ def save_label_lists(label_type, class_names, label_queue, save_dir, labels_laye
                 filename = f'{class_name}_label_ids.xlsx'
                 sheet_name = labels_layer.name
             else:
-                filename = f'{class_name}_label_ids_image_{plane}.xlsx'
+                filename = f'{class_name}_image_{plane}_label_ids.xlsx'
                 current_image = plane
                 sheet_name = f'Image {current_image}'
             file_path = os.path.join(save_dir, filename)
             if os.path.exists(file_path):
-                new_filename = f'{class_name}_label_ids_image_{plane}_updated.xlsx'
+                new_filename = f'{class_name}_image_{plane}_label_ids_updated.xlsx'
                 file_path = os.path.join(save_dir, new_filename)
             workbook = Workbook()
             sheet = workbook.create_sheet(title=sheet_name)
