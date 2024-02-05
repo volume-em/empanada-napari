@@ -92,7 +92,7 @@ def morph_labels():
         local_points = map_points(world_points, labels_layer)
 
         if type(labels) == da.core.Array:
-            label_ids = [labels[pt].compute() for pt in local_points]
+            raise Exception(f'Morph operations are not supported on Dask Array labels!')
         else:
             label_ids = [labels[pt].item() for pt in local_points]
 
