@@ -131,11 +131,12 @@ def label_counter_widget():
         label_type=dict(widget_type='RadioButtons', choices=list(label_params.keys()),
                         value=list(label_params.keys())[0], label='Apply to:',
                         tooltip='Calculate number of instance labels'),
-        label_text=dict(widget_type='TextEdit', label='Define dataset labels:', value='class_number,class_name',
+        label_text=dict(widget_type='TextEdit',
+                        label='Define dataset labels:' '\nFormat: class_number,class_name' '\nExample: 1,Mito',
+                        value='class_number,class_name',
                         tooltip='Use a separate line for each class. Each line must be {class_number},{class_name (nospaces)}'),
-        label_divisor=dict(widget_type='LineEdit', label='Label Divisor', value='0',
+        label_divisor=dict(widget_type='LineEdit', label='Label divisor', value='None',
                            tooltip='Label divisor that separates objects of different classes.'),
-
         save_op_head=dict(widget_type='Label', label=f'<h3 text-align="center">Export Label IDs (optional)</h3>',
                           tooltip='Export excel file with label IDs listed by class.'),
         export_xlsx=dict(widget_type='CheckBox', value=False, label='Export list of label IDs (.xlsx file)',
@@ -165,7 +166,10 @@ def label_counter_widget():
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
 
-        label_divisor = int(label_divisor)
+        if label_divisor == 'None':
+            label_divisor = 0
+        else:
+            label_divisor = int(label_divisor)
         assert label_divisor > -1, "Label divisor must be a non-negative integer!"
 
         labels = labels_layer.data
