@@ -24,7 +24,7 @@ It's recommended to have installed napari through [conda](https://docs.conda.io/
 Then to install this plugin:
 
 ```shell
-pip install empanada-napari
+pip install empanada-napari==1.1.0
 ```
 
 Launch napari:
