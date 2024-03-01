@@ -1,6 +1,20 @@
 # empanada-napari
 
-**The preprint describing this work is now available [on bioRxiv](https://www.biorxiv.org/content/10.1101/2022.03.17.484806v1).**
+> [!IMPORTANT]
+> **New Version Announcement!**
+> * New modules 
+>   * Morph labels - applies morphological operations to labels
+>   * Count labels - counts and lists the label IDs within the dataset
+>   * Filter labels - removes small pixel/voxel area labels or labels touching the image boundaries
+>   * Export and import a model - export or import locally saved model files to use within empanada-napari
+> * Updated modules 
+>   * Export segmentations - now allows 3D segmentations to be exported as a single .tiff image
+>   * Pick and save finetune/training patches - now allows paired grayscale and label mask images to create training patches 
+>   * Split label - now allows users to specify new label IDs 
+> * Updated documentation
+>   * Check out the updated documentation [here](https://empanada.readthedocs.io/en/latest/empanada-napari.html)!
+
+**The paper describing this work is now available [on Cell Systems](https://www.cell.com/cell-systems/fulltext/S2405-4712(22)00494-X).**
 
 **Documentation for the plugin, including more detailed installation instructions, can be found [here](https://empanada.readthedocs.io/en/latest/empanada-napari.html).**
 

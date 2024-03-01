@@ -337,8 +337,9 @@ def pick_patches():
         isotropic=dict(widget_type='CheckBox', text='Pick from xy, xz, or yz', value=False, tooltip='If a 3D image with isotropic voxels, pick patches from all planes.'),
         is_2d_stack=dict(widget_type='CheckBox', text='Image is 2D stack', value=False, tooltip='Check if image layer is a stack of 2D images.'),
 
-        label_option_header=dict(widget_type='Label', label=f'<h3 text-align="center">Paired labeled data (optional)</h3>', tooltip='Useful for ready to go Ground Truth labels.'),
-        label_option=dict(widget_type='CheckBox', text='Pick paired patches from images and GT labels', value=False, tooltip='Whether to pick training patches from paired image and label layers.'),
+#        label_option_header=dict(widget_type='Label', label=f'<h3 text-align="center">Paired labeled data (optional)</h3>', tooltip='Useful for ready to go Ground Truth labels.'),
+        label_option=dict(widget_type='CheckBox', text='Pick paired patches (optional)', value=False,
+                          tooltip='Whether to pick training patches from paired image and label layers. Useful for ready to go Ground Truth labels.'),
     )
 
     @magicgui(
@@ -357,7 +358,7 @@ def pick_patches():
         isotropic,
         is_2d_stack,
 
-        label_option_header,
+        # label_option_header,
         label_option: bool,
         label_layer: napari.layers.Labels,
     ):

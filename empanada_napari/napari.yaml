@@ -27,7 +27,7 @@ contributions:
     title: Create Split Labels
     python_name: empanada_napari._merge_split_widget:split_labels
   - id: empanada-napari.filter_small_labels
-    title: Filter labels
+    title: Filter Labels
     python_name: empanada_napari._filter_small_labels:filter_small_labels
   - id: empanada-napari.jump_to_label
     title: Jump to label
@@ -79,7 +79,7 @@ contributions:
   - command: empanada-napari.split_labels
     display_name: Split Labels
   - command: empanada-napari.filter_small_labels
-    display_name: Filter labels
+    display_name: Filter Labels
   - command: empanada-napari.jump_to_label
     display_name: Jump to label
   - command: empanada-napari.find_next_available_label
