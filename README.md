@@ -12,13 +12,13 @@
 >   * Pick and save finetune/training patches - now allows paired grayscale and label mask images to create training patches 
 >   * Split label - now allows users to specify new label IDs 
 > * Updated documentation
->   * Check out the updated documentation [here](https://empanada.readthedocs.io/en/latest/empanada-napari.html)!
+>   * Check out the updated documentation [here](https://empanada.readthedocs.io/en/latest/index.html)!
 
 **The paper describing this work is now available [on Cell Systems](https://www.cell.com/cell-systems/fulltext/S2405-4712(22)00494-X).**
 
 **Documentation for the plugin, including more detailed installation instructions, can be found [here](https://empanada.readthedocs.io/en/latest/empanada-napari.html).**
 
-[empanada](https://github.com/volume-em/empanada) is a tool for deep learning-based panoptic segmentation of 2D and 3D electron microscopy images of cells.
+empanada is a tool for deep learning-based panoptic segmentation of 2D and 3D electron microscopy images of cells.
 This plugin allows the running of panoptic segmentation models trained in empanada within [napari](https://napari.org).
 For help with this plugin please open an [issue](https://github.com/volume-em/empanada-napari/issues), for issues with napari specifically
 raise an [issue here instead](https://github.com/napari/napari/issues).
