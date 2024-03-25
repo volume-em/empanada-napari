@@ -15,6 +15,7 @@ from ._merge_split_widget import (
     find_next_available_label_widget
 )
 from ._export_batch_segs import export_batch_segs_widget
+from ._label_counter_widget import label_counter_widget
 
 __all__ = [
     'slice_dock_widget',
@@ -32,5 +33,6 @@ __all__ = [
     'focus_widget',
     'jump_to_label_widget',
     'find_next_available_label_widget',
-    'export_batch_segs_widget'
+    'export_batch_segs_widget',
+    'label_counter_widget'
 ]

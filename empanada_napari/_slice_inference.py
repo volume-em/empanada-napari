@@ -94,7 +94,7 @@ def test_widget():
         min_distance_object_centers=dict(widget_type='SpinBox', value=3, min=1, max=21, step=1, label='Centers Min Distance'),
         fine_boundaries=dict(widget_type='CheckBox', text='Fine boundaries', value=False, tooltip='Finer boundaries between objects'),
         semantic_only=dict(widget_type='CheckBox', text='Semantic only', value=False, tooltip='Only run semantic segmentation for all classes.'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value='100000', label='Max objects per class'),
+        maximum_objects_per_class=dict(widget_type='LineEdit', value='10000', label='Max objects per class', tooltip='Maximum number of objects per class/ label divisor for mutliclass segmentation.'),
         tile_size=dict(widget_type='SpinBox', value=0, min=0, max=4096, step=256, label='Tile size', tooltip='Tile size for inference, whole image will be segmented if 0'),
         batch_mode=dict(widget_type='CheckBox', text='Batch mode', value=False, tooltip='If checked, each image in a stack is segmented independently.'),
         viewport=dict(widget_type='CheckBox', text='Confine to viewport', value=False, tooltip='If checked, inference will be restricted to the current viewport.'),

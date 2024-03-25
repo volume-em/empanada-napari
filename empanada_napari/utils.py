@@ -1,5 +1,6 @@
 import os, sys, yaml
 import numpy as np
+import requests
 import torch
 from pathlib import Path
 import urllib.request
@@ -69,7 +70,7 @@ def load_model_to_device(fpath_or_url, device):
 def valid_url_or_file(fp):
     valid = False
     try:
-        f = urllib.request.urlopen(fp)
+        f = requests.get(fp, verify=False, stream=True)
         valid = True
     except:
         # make sure it's an accessible file
