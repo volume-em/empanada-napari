@@ -107,6 +107,7 @@ def filter_small_labels():
                 labels_, labels_removed = filter_out_small_label_areas(labels[plane] if labels.ndim > 2 else labels, min_area)
                 if labels.ndim > 2:
                     labels[plane] = labels_
+
                 else:
                     labels = labels_
             elif remove_opt == 'Boundary labels':
