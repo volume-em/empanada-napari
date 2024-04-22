@@ -104,9 +104,17 @@ def filter_small_labels():
             plane = viewer.dims.current_step[0]
 
             if remove_opt == 'Small labels':
-                labels[plane], labels_removed = filter_out_small_label_areas(labels[plane], min_area)
+                labels_, labels_removed = filter_out_small_label_areas(labels[plane] if labels.ndim > 2 else labels, min_area)
+                if labels.ndim > 2:
+                    labels[plane] = labels_
+                else:
+                    labels = labels_
             elif remove_opt == 'Boundary labels':
-                labels[plane], labels_removed = remove_boundary_labels(labels[plane])
+                labels_, labels_removed = remove_boundary_labels(labels[plane] if labels.ndim > 2 else labels)
+                if labels.ndim > 2:
+                    labels[plane] = labels_
+                else:
+                    labels = labels_
 
         elif labels.ndim == 3 and apply_to == '2D patches':
             for label in tqdm(range(labels.shape[0])):
