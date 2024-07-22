@@ -7,9 +7,11 @@ from skimage.segmentation import watershed
 from skimage import morphology as morph
 from skimage.feature import peak_local_max
 from skimage import draw
+import math
 import napari
 import numpy as np
 import dask.array as da
+from scipy import ndimage as ndi
 
 
 def map_points(world_points, labels_layer):
@@ -43,6 +45,75 @@ def _box_to_slice(shed_box):
 
     return tuple(slices)
 
+def _box_to_global_indices(box_indices, shed_box):
+    n_dim = len(shed_box) // 2
+    return tuple([box_indices[i] + shed_box[i] for i in range(n_dim)])
+
+
+def focus_window():
+    @magicgui(
+        call_button='Focus',
+        layout='vertical',
+        focus_name=dict(widget_type='LineEdit', value='focus', label='Focus name', tooltip='Layer name to use or create for focus window.'),
+    )
+
+    def widget(
+        viewer: napari.viewer.Viewer,
+        image_layer: napari.layers.Image,
+        focus_name: str
+    ):
+        shape = image_layer.data.shape
+        assert len(shape) == 3
+
+        max_dim = 384
+        d0 = math.ceil(shape[1] / math.ceil(shape[1] / max_dim))
+        d1 = math.ceil(shape[2] / math.ceil(shape[2] / max_dim))
+
+        chunk_dim = (shape[0], d0, d1)
+        chunked_shape = tuple([math.ceil(s / cd) for s,cd in zip(shape, chunk_dim)])
+
+        if focus_name in viewer.layers:
+            focus = viewer.layers[focus_name].data
+            if focus.shape != shape:
+                raise Exception(f'Focus layer {focus_name} exists and is not the same shape as the chosen image!')
+
+            # get current chunk from metadata
+            current_chunk = viewer.layers[focus_name].metadata.get('focus_chunk')
+            if current_chunk is None:
+               z, y, x = np.where(focus == 255)
+               assert z.min() == 0 and z.max() == shape[0] - 1
+               current_chunk = np.ravel_multi_index(
+                    (0, y.min() // chunk_dim[1], x.min() // chunk_dim[2]), chunked_shape
+                )
+
+            # focus on the next chunk
+            focus_chunk = current_chunk + 1
+        else:
+            focus = np.zeros(shape, dtype=np.uint8)
+            viewer.add_image(focus, name=focus_name, opacity=0.3)
+            focus_chunk = 0
+
+        if focus_chunk >= math.prod(chunked_shape):
+            print(f'All focus windows are complete!')
+            return
+
+        # get the next chunk
+        cindices = np.unravel_index(focus_chunk, chunked_shape)
+        slices = []
+        for i,d,r in zip(cindices, chunk_dim, shape):
+            s = int(i * d)
+            e = min(s + d, r)
+            slices.append(slice(s, e))
+
+        # turn off old and turn on new
+        focus[focus == 255] = 0
+        focus[tuple(slices)] = 255
+
+        viewer.layers[focus_name].data = focus
+        viewer.layers[focus_name].metadata['focus_chunk'] = focus_chunk
+
+    return widget
+
 def morph_labels():
 
     ops = {
@@ -50,7 +121,8 @@ def morph_labels():
         'Erode': morph.binary_erosion,
         'Close': morph.binary_closing,
         'Open': morph.binary_opening,
-        'Fill holes': morph.remove_small_holes
+        'Fill holes': morph.remove_small_holes,
+        'Median Filter': ndi.median_filter,
     }
 
     def _pad_box(shed_box, shape, radius=0):
@@ -120,6 +192,16 @@ def morph_labels():
             print('No labels selected!')
             return
 
+        if operation == 'Fill holes':
+            op_arg = hole_size
+        elif labels.ndim == 3 and apply3d:
+            op_arg = morph.ball(radius)
+        else:
+            op_arg = morph.disk(radius)
+
+        if operation == 'Median Filter':
+            op_arg = radius
+
         for label_id in label_ids:
             if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
                 shed_box = [rp.bbox for rp in regionprops(labels) if rp.label == label_id][0]
@@ -129,9 +211,18 @@ def morph_labels():
                 # apply op
                 binary = crop_and_binarize(labels, shed_box, label_id)
 
-                labels[slices][binary] = 0
+                local_indices_before = np.where(binary.ravel())
                 binary = ops[operation](binary, op_arg)
-                labels[slices][binary] = label_id
+
+                local_indices_after = np.where(binary.ravel())
+                local_indices = np.union1d(local_indices_before, local_indices_after)
+                local_indices = np.unravel_index(local_indices, binary.shape)
+
+                global_indices = _box_to_global_indices(local_indices, shed_box)
+                binary = binary.astype(labels.dtype)
+                binary[binary > 0] = label_id
+
+                labels_layer.data_setitem(global_indices, binary[local_indices])
 
             elif labels.ndim == 3:
                 # # get the current viewer axis
@@ -167,6 +258,7 @@ def morph_labels():
                     labels2d[slices][binary] = label_id
 
                     put(labels, plane, labels2d, axis)
+                    labels_layer.data = labels
 
             elif labels.ndim == 4:
                 # get the current viewer axes
@@ -198,13 +290,10 @@ def morph_labels():
                 binary = ops[operation](binary, op_arg)
                 labels2d[slices][binary] = label_id
                     
-                labels[plane1, plane2] = labels2d
+                labels[local_points[0][0], local_points[0][1]] = labels2d
+                labels_layer.data = labels
 
-        labels_layer.data = labels
-        # if points_layer is not None:
-        #     return
-        # else:
-        #     points_layer.data = []
+        points_layer.data = []
 
     return widget
 
@@ -246,8 +335,9 @@ def delete_labels():
         label_ids = list(filter(lambda x: x > 0, label_ids))
 
         if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
-            for l in label_ids:
-                labels[labels == l] = 0
+            indices = np.isin(labels, label_ids).nonzero()
+            labels_layer.data_setitem(indices, 0)
+
         elif labels.ndim == 3:
             # get the current viewer axis
             axis = viewer.dims.order[0]
@@ -259,6 +349,8 @@ def delete_labels():
                     labels2d[labels2d == l] = 0
 
                 put(labels, local_pt[axis], labels2d, axis)
+
+            labels_layer.data = labels
         elif labels.ndim == 4:
             # get the current viewer axes
             assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
@@ -271,8 +363,9 @@ def delete_labels():
                     labels2d[labels2d == l] = 0
 
                 labels[local_pt[0], local_pt[1]] = labels2d
-            
-        labels_layer.data = labels
+
+            labels_layer.data = labels
+
         points_layer.data = []
 
         print(f'Removed labels {label_ids}')
@@ -382,9 +475,11 @@ def merge_labels():
 
         if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
             # replace labels with minimum of the selected labels
-            for l in label_ids:
-                if l != new_label_id:
-                    labels[labels == l] = new_label_id
+
+            indices = np.isin(labels, label_ids).nonzero()
+            labels_layer.data_setitem(indices, new_label_id)
+
+
         elif labels.ndim == 3:
             # take labels along axis
             for local_pt in local_points:
@@ -395,6 +490,8 @@ def merge_labels():
                         labels2d[labels2d == l] = new_label_id
 
                 put(labels, local_pt[axis], labels2d, axis)
+
+            labels_layer.data = labels
         elif labels.ndim == 4:
             # get the current viewer axes
             assert viewer.dims.order[0] == 0, "Dims expected to be (0, 1, 2, 3) for 4D labels!"
@@ -409,7 +506,8 @@ def merge_labels():
 
                 labels[local_pt[0], local_pt[1]] = labels2d
 
-        labels_layer.data = labels
+            labels_layer.data = labels
+
         if points_layer is not None:
             points_layer.data = []
         if shapes_layer is not None:
@@ -515,6 +613,7 @@ def split_labels():
         }
 
         for label_id, local_points in labels_points.items():
+
             if labels.ndim == 2 or (labels.ndim == 3 and apply3d):
                 shed_box = [rp.bbox for rp in regionprops(labels) if rp.label == label_id][0]
                 binary = crop_and_binarize(labels, shed_box, label_id)
@@ -530,19 +629,15 @@ def split_labels():
                     new_labels = watershed(energy, markers, mask=binary)
                     slices = _box_to_slice(shed_box)
 
-                    if new_label:
-                        new_label_id = int(start_label) - 1
-                        max_label = new_label_id
-                    else:
-                        max_label = labels.max()
+                    max_label = labels.max()
 
-                    # Check if any of the new label IDs are already in use
-                    new_labels_exist = any(labels.max() >= (marker_ids + max_label))
-                    if new_labels_exist:
-                        print(f'Label ID {start_label} is already in use. Please specify new label IDs.')
-                    else:
-                        labels[slices][binary] = new_labels[binary] + max_label
-                        print(f'Split label {label_id} to {marker_ids + max_label}')
+                    new_labels[new_labels > 0] += max_label
+
+                    local_indices = np.where(new_labels > 0)
+                    global_indices = _box_to_global_indices(local_indices, shed_box)
+
+                    labels_layer.data_setitem(global_indices, new_labels[local_indices])
+
                 else:
                     print('Nothing to split.')
 
@@ -586,6 +681,7 @@ def split_labels():
                     print('Nothing to split.')
 
                 put(labels, local_points[0][axis], labels2d, axis)
+                labels_layer.data = labels
 
             elif labels.ndim == 4:
                 # get the current viewer axes
@@ -628,8 +724,8 @@ def split_labels():
                     print('Nothing to split.')
                     
                 labels[local_points[0][0], local_points[0][1]] = labels2d
+                labels_layer.data = labels
 
-        labels_layer.data = labels
         points_layer.data = []
 
     return widget
@@ -763,8 +859,12 @@ def find_next_available_label():
     return widget
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
+def focus_widget():
+    return focus_window, {'name': 'focus window'}
+
+@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def morph_labels_widget():
-    return morph_labels, {'name': 'Morph Labels'}
+    return morph_labels, {'name': 'morph labels'}
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def delete_labels_widget():
