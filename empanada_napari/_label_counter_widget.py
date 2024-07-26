@@ -110,9 +110,9 @@ def count_labels(label_values, label_divisor):
 
     class_ids = np.unique(np.floor_divide(label_values, label_divisor)).tolist()
     for ci in class_ids:
-        min_id = ci * label_divisor + 1
+        min_id = ci * label_divisor
         max_id = (ci + 1) * label_divisor
-        label_ids = label_values[np.logical_and(label_values >= min_id, label_values < max_id)]
+        label_ids = label_values[(label_values >= min_id) & (label_values < max_id)]
         label_queue[ci] = label_ids.tolist()
 
     return label_queue, class_ids
@@ -225,6 +225,10 @@ def label_counter_widget():
             class_id, class_name = seg_class.split(',')
             class_num = class_id.strip()
             class_name = class_name.strip()
+
+            if not class_num.isdigit():
+                print(f'The class number you entered is invalid. Please provide an integer value!')
+                return
             class_names[int(class_num)] = class_name
 
         print(f'Class names: {class_names}')
