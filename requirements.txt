@@ -1,5 +1,8 @@
-napari[all]>=0.4.15
+opencv-python==4.9.0.80
+opencv-python-headless==4.9.0.80
+napari[all]==0.4.18
 scikit-image>=0.18
 empanada-dl>=0.1.5
 napari-plugin-engine>=0.1.4
 imagecodecs
+numba==0.59.0

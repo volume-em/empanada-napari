@@ -110,9 +110,9 @@ def count_labels(label_values, label_divisor):
 
     class_ids = np.unique(np.floor_divide(label_values, label_divisor)).tolist()
     for ci in class_ids:
-        min_id = ci * label_divisor + 1
+        min_id = ci * label_divisor
         max_id = (ci + 1) * label_divisor
-        label_ids = label_values[np.logical_and(label_values >= min_id, label_values < max_id)]
+        label_ids = label_values[(label_values >= min_id) & (label_values < max_id)]
         label_queue[ci] = label_ids.tolist()
 
     return label_queue, class_ids
@@ -161,6 +161,7 @@ def label_counter_widget():
         if export_xlsx:
             # folder_name = f'{labels_layer.name}_label_ids'
             folder_path = os.path.join(save_dir, folder_name)
+
             # Create the save directory if it doesn't exist
             save_dir = folder_path
             if not os.path.exists(save_dir):
@@ -174,20 +175,60 @@ def label_counter_widget():
 
         labels = labels_layer.data
 
+        def _get_current_image(labels_layer):
+            cursor_pos = viewer.cursor.position
+
+            labels_ = labels_layer.data
+
+            y, x = 0, 0
+            if labels.ndim == 4:
+                axis = tuple(viewer.dims.order[:2])
+                plane = (
+                    int(labels_layer.world_to_data(cursor_pos)[axis[0]]),
+                    int(labels_layer.world_to_data(cursor_pos)[axis[1]])
+                )
+
+                slices = [slice(None), slice(None), slice(None), slice(None)]
+
+                slices[axis[0]] = plane[0]
+                slices[axis[1]] = plane[1]
+
+            elif labels.ndim == 3:
+                axis = viewer.dims.order[0]
+                plane = int(labels_layer.world_to_data(cursor_pos)[axis])
+
+                slices = [slice(None), slice(None), slice(None)]
+                slices[axis] = plane
+
+            else:
+                slices = [slice(None), slice(None)]
+                axis = None
+                plane = None
+
+            labels_slice = labels_[tuple(slices)]
+            unique_labels = np.unique(labels_slice)
+
+            return labels_slice, unique_labels, axis, plane, y, x
+
         if labels.ndim > 2 and label_type == 'Current image':
-            # assert viewer.dims.order[0] == 0, "Must be viewing axis 0 (xy plane)!"
             plane = viewer.dims.current_step[0]
+            # print(f'Viewing plane: {plane}')
         else:
             plane = 'null'
 
         if plane != 'null':
-            labels = labels[plane]
+            label_slice, unique_labels, axis, plane, y, x = _get_current_image(labels_layer)
+            labels = unique_labels
 
         class_names = {}
         for seg_class in label_text.split():
             class_id, class_name = seg_class.split(',')
             class_num = class_id.strip()
             class_name = class_name.strip()
+
+            if not class_num.isdigit():
+                print(f'The class number you entered is invalid. Please provide an integer value!')
+                return
             class_names[int(class_num)] = class_name
 
         print(f'Class names: {class_names}')

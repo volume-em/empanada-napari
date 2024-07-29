@@ -44,7 +44,7 @@ empanada-napari works with python=3.9 or lower
 It's recommended to have installed napari through [conda](https://docs.conda.io/en/latest/miniconda.html). Then to install this plugin:
 
 ```shell
-pip install empanada-napari==1.1.0
+pip install empanada-napari==1.1.1
 ```
 
 Launch napari:
@@ -68,7 +68,7 @@ pip uninstall empanada-napari
 Then install the newest version:
 
 ```shell
-pip install empanada-napari==1.1.0
+pip install empanada-napari==1.1.1
 ```
 
 
