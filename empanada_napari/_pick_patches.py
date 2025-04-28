@@ -330,8 +330,8 @@ def pick_patches():
         return np.stack(flipbooks, axis=0), np.stack(label_flipbooks, axis=0), locs
 
     gui_params = dict(
-        num_patches=dict(widget_type='SpinBox', value=16, min=1, max=32, step=1, label='Number of patches for annotation'),
-        patch_size=dict(widget_type='SpinBox', value=256, min=224, max=1024, step=16, label='Patch size in pixels'),
+        num_patches=dict(widget_type='SpinBox', value=16, min=1, max=3200, step=1, label='Number of patches for annotation'),
+        patch_size=dict(widget_type='SpinBox', value=256, min=224, max=102400, step=16, label='Patch size in pixels'),
         pyramid_level=dict(widget_type='ComboBox', choices=list(range(9)), value=0, label='Multiscale image level', tooltip='If image layer is a multiscale image, pick the resolution level for patches. Assumes 2x scaling between levels.'),
         pick_points_only=dict(widget_type='CheckBox', text='Pick all points', value=False, tooltip='Overwrites the number of patches and creates patches for all points.'),
         isotropic=dict(widget_type='CheckBox', text='Pick from xy, xz, or yz', value=False, tooltip='If a 3D image with isotropic voxels, pick patches from all planes.'),

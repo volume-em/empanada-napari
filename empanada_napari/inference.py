@@ -1,6 +1,5 @@
 import os, platform
 import zarr
-import numpy as np
 import torch
 
 import torch.multiprocessing as mp
@@ -23,6 +22,8 @@ from empanada.consensus import merge_objects_from_tiles, merge_semantic_from_til
 
 from napari.qt.threading import thread_worker
 from empanada_napari.utils import Preprocessor, load_model_to_device
+import numpy as np
+
 
 MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
 torch.hub.set_dir(MODEL_DIR)
@@ -90,7 +91,7 @@ def stack_postprocessing(
             filters.remove_pancakes(stack_tracker, min_span=min_extent)
             class_dtype = dtype
         else:
-            class_dtype = np.uint8 
+            class_dtype = np.uint8
 
         print(f'Total {class_name} objects {len(stack_tracker.instances.keys())}')
 
@@ -280,9 +281,9 @@ class Engine2d:
     def infer(self, image):
         # engine handles upsampling and padding
         if self.tile_size > 0 and any([s > self.tile_size for s in image.shape]):
-            print('Tiling image for inference...')
+            print('Tiling image for inference..')
             tiler = Tiler(
-                image.shape, tile_size=self.tile_size, 
+                image.shape, tile_size=self.tile_size,
                 overlap_width=min(128, int(self.tile_size * 0.1))
             )
 
@@ -345,7 +346,10 @@ class Engine3d:
         use_quantized=False,
         store_url=None,
         chunk_size=(256, 256, 256),
-        save_panoptic=False
+        save_panoptic=False,
+        label_erosion=0,
+        label_dilation=0,
+        fill_holes_in_segmentation=False
     ):
         # check whether GPU is available
         device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
@@ -363,6 +367,9 @@ class Engine3d:
         self.label_divisor = label_divisor
         self.padding_factor = model_config['padding_factor']
         self.inference_scale = inference_scale
+        self.label_erosion = label_erosion
+        self.label_dilation = label_dilation
+        self.fill_holes_in_segmentation = fill_holes_in_segmentation
 
         # downgrade all thing classes
         if semantic_only:
@@ -418,7 +425,10 @@ class Engine3d:
         semantic_only,
         store_url,
         chunk_size,
-        save_panoptic
+        save_panoptic,
+        label_erosion,
+        label_dilation,
+        fill_holes_in_segmentation
     ):
         self.label_divisor = label_divisor
         self.inference_scale = inference_scale
@@ -433,6 +443,9 @@ class Engine3d:
         self.engine.nms_kernel = nms_kernel
         self.engine.confidence_thr = confidence_thr
         self.engine.coarse_boundaries = not fine_boundaries
+        self.label_erosion = label_erosion
+        self.label_dilation = label_dilation
+        self.fill_holes_in_segmentation = fill_holes_in_segmentation
 
         if semantic_only:
             self.thing_list = []
@@ -544,6 +557,18 @@ class Engine3d:
             filters.remove_small_objects(tracker, min_size=self.min_size)
             filters.remove_pancakes(tracker, min_span=self.min_extent)
 
+        if self.label_erosion > 0:
+            for tracker in trackers:
+                filters.erode(tracker, volume.shape, self.labels, self.label_divisor, self.thing_list, iterations=self.label_erosion)
+
+        if self.label_dilation > 0:
+            for tracker in trackers:
+                filters.dilate(tracker, volume.shape, self.labels, self.label_divisor, self.thing_list, iterations=self.label_dilation)
+
+        if self.fill_holes_in_segmentation:
+            for tracker in trackers:
+                filters.fill_holes_in_segmentation(tracker, volume.shape, self.labels, self.label_divisor, self.thing_list)
+
         if stack is not None:
             print('Writing panoptic segmentation.')
             fill_panoptic_volume(stack, trackers)
@@ -551,3 +576,4 @@ class Engine3d:
         self.engine.reset()
 
         return stack, trackers
+

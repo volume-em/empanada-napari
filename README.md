@@ -1,13 +1,21 @@
 # empanada-napari
 
 > [!IMPORTANT]
-> **New Version Announcement!**
+> **New Version 1.2 Announcement!**
+> * New Models:
+>   * NucleoNet: A base model for EM instance nucleus segmentation
+>   * DropNet: A base model for EM Lipid Droplet instance segmentation
 > * New modules 
+>   * Archive Model - archives the model into a hidden archive folder 
+>   * Create Tiles - Split big images winto small tiles (with Mask/ optional)
+>   * Merge Tiles - Opposite of split tiles, create full image from tiles created by create tiles
 >   * Morph labels - applies morphological operations to labels
 >   * Count labels - counts and lists the label IDs within the dataset
 >   * Filter labels - removes small pixel/voxel area labels or labels touching the image boundaries
 >   * Export and import a model - export or import locally saved model files to use within empanada-napari
-> * Updated modules 
+> * Updated modules
+>   * 2D Inference - now allows ROI inference and filling holes in segmentation label maps
+>   * 3D Inference - allows erosion, dilation and fill holes in segmentation to help tackle big split merge errors
 >   * Export segmentations - now allows 3D segmentations to be exported as a single .tiff image
 >   * Pick and save finetune/training patches - now allows paired grayscale and label mask images to create training patches 
 >   * Split label - now allows users to specify new label IDs 

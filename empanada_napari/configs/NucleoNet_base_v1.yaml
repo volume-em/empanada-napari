@@ -1,0 +1,33 @@
+FINETUNE:
+  criterion: PanopticLoss
+  criterion_params:
+    ce_weight: 1
+    l1_weight: 0.01
+    mse_weight: 200
+    pr_weight: 1
+    top_k_percent: 0.2
+  dataset_class: SingleClassInstanceDataset
+  dataset_params:
+    weight_gamma: 0.7
+  engine: PanopticDeepLabEngine
+  engine_params:
+    confidence_thr: 0.5
+    label_divisor: 1000
+    nms_kernel: 7
+    nms_threshold: 0.1
+    stuff_area: 64
+    thing_list:
+    - 1
+    void_label: 0
+class_names:
+  1: nuclei
+labels:
+- 1
+model: https://zenodo.org/records/15298854/files/PanopticDeepLabPR_663ba73a-0908-4f7d-b59e-88a2d3ea2e39_panoptic_deeplab_pointrend.pth?download=1
+model_quantized: https://zenodo.org/records/15298854/files/PanopticDeepLabPR_663ba73a-0908-4f7d-b59e-88a2d3ea2e39_panoptic_deeplab_pointrend_quantized.pth?download=1
+norms:
+  mean: 0.57571
+  std: 0.12765
+padding_factor: 512
+thing_list:
+- 1

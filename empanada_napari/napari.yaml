@@ -59,6 +59,21 @@ contributions:
   - id: empanada-napari.import_model_widget
     title: Import a model
     python_name: empanada_napari._export_import_models:import_model_widget
+  - id: empanada-napari.archive_model
+    title: Archive a model
+    python_name: empanada_napari._export_import_models:archive_model
+  - id: empanada-napari.create_tiles
+    title: Create Tiles
+    python_name: empanada_napari._create_tiles:create_tiles
+  - id: empanada-napari.merge_tiles
+    title: Merge Tiles
+    python_name: empanada_napari._create_tiles:merge_tiles
+#  - id: empanada-napari.visualize_patches
+#    title: Visualize Patches
+#    python_name: empanada_napari._visualize_patches_from_points:create_shapes_layer_from_points
+#  - id: empanada-napari.get_prediction_quality_numbers
+#    title: Get Prediction Quality Numbers
+#    python_name: empanada_napari._accuracy_metrics:test_model_performance_widget
 
 
   widgets:
@@ -100,5 +115,16 @@ contributions:
     display_name: Export a model
   - command: empanada-napari.import_model_widget
     display_name: Import a model
+  - command: empanada-napari.archive_model
+    display_name: Archive a model
+  - command: empanada-napari.create_tiles
+    display_name: Create Tiles
+  - command: empanada-napari.merge_tiles
+    display_name: Merge Tiles
+#  - command: empanada-napari.visualize_patches
+#    display_name: Visualize Patches
+#  - command: empanada-napari.get_prediction_quality_numbers
+#    display_name: Get Model Performance
+
 
 

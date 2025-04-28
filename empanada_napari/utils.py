@@ -6,6 +6,43 @@ from pathlib import Path
 import urllib.request
 from urllib.parse import urlparse
 from empanada.config_loaders import read_yaml
+import warnings
+import contextlib
+import json
+import requests
+from urllib3.exceptions import InsecureRequestWarning
+
+old_merge_environment_settings = requests.Session.merge_environment_settings
+
+@contextlib.contextmanager
+def no_ssl_verification():
+    opened_adapters = set()
+
+    def merge_environment_settings(self, url, proxies, stream, verify, cert):
+        # Verification happens only once per connection so we need to close
+        # all the opened adapters once we're done. Otherwise, the effects of
+        # verify=False persist beyond the end of this context manager.
+        opened_adapters.add(self.get_adapter(url))
+
+        settings = old_merge_environment_settings(self, url, proxies, stream, verify, cert)
+        settings['verify'] = False
+
+        return settings
+
+    requests.Session.merge_environment_settings = merge_environment_settings
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', InsecureRequestWarning)
+            yield
+    finally:
+        requests.Session.merge_environment_settings = old_merge_environment_settings
+
+        for adapter in opened_adapters:
+            try:
+                adapter.close()
+            except:
+                pass
 
 __all__ = [
     'abspath'
@@ -61,7 +98,8 @@ def load_model_to_device(fpath_or_url, device):
         if not os.path.exists(cached_file):
             sys.stderr.write('Downloading: "{}" to {}\n'.format(fpath_or_url, cached_file))
             hash_prefix = None
-            torch.hub.download_url_to_file(fpath_or_url, cached_file, hash_prefix, progress=True)
+            with no_ssl_verification():
+                torch.hub.download_url_to_file(fpath_or_url, cached_file, hash_prefix, progress=True)
 
         model = torch.jit.load(cached_file, map_location=device)
 

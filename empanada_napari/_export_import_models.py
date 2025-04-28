@@ -142,3 +142,49 @@ def import_model_widget():
     return widget
 
 
+def archive_model():
+    model_configs = get_configs()
+    gui_params = dict(
+        model_name=dict(widget_type='ComboBox', label='Model name', choices=list(model_configs.keys()),
+                        value=list(model_configs.keys())[0], tooltip='model to archive'),
+    )
+    @magicgui(
+        call_button='Archive model',
+        layout='vertical',
+        **gui_params
+    )
+    def widget(
+            viewer: napari.viewer.Viewer,
+            model_name: str
+        ):
+
+        empanada_internal_dir = os.path.join(os.path.expanduser('~'), '.empanada')
+        configs_dir = os.path.join(empanada_internal_dir, 'configs')
+        models_dir = os.path.join(empanada_internal_dir, 'models')
+
+        archived_folder = os.path.join(empanada_internal_dir, 'archived')
+        os.makedirs(archived_folder, exist_ok=True)
+
+        # get model paths
+        config_yaml = model_configs[model_name]
+        config = load_config(config_yaml)
+        model_path = config['model']
+        quantized_path = config.get('model_quantized')
+
+        # get model name
+        if os.path.exists(model_path):
+            shutil.move(model_path, os.path.join(archived_folder, os.path.basename(model_path)))
+        if quantized_path:
+            if os.path.exists(quantized_path):
+                shutil.move(quantized_path, os.path.join(archived_folder, os.path.basename(quantized_path)))
+
+        # move config file
+        if os.path.exists(config_yaml):
+            shutil.move(config_yaml, os.path.join(archived_folder, os.path.basename(config_yaml)))
+
+        print("Model {} archived, please reopen napari to see the changes.".format(model_name))
+
+    return widget
+
+
+

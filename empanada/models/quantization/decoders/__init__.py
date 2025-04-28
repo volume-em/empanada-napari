@@ -1,0 +1,1 @@
+from empanada.models.quantization.decoders.panoptic_deeplab import QuantizablePanopticDeepLabDecoder
