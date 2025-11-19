@@ -1,7 +1,11 @@
 import math
 import numpy as np
 import numba
+from numba.typed import List
+from numba import types
+from numba import int64
 from scipy.sparse import csr_matrix
+from typing import Tuple
 
 def take(array, indices, axis=0):
     r"""Take indices from array along an axis
@@ -464,6 +468,8 @@ def split_range_by_votes(running_range, num_votes, vote_thr=2):
         num_votes: List of n. Each element is the number of votes for a particular index
             within the range(start, end).
 
+            ** NUMPY ARRAY ONLY
+
         vote_thr: Minimum number of votes for an index to be kept in the running range.
 
     Returns:
@@ -472,8 +478,9 @@ def split_range_by_votes(running_range, num_votes, vote_thr=2):
     """
     # the running range may be split at places with
     # too few votes to cross the vote_thr
-    split_voted_ranges = []
+    split_voted_ranges = List.empty_list(List.empty_list(types.int64))
     s, e = None, None
+
     for ix in range(len(num_votes)):
         n = num_votes[ix]
         if n >= vote_thr:
@@ -485,19 +492,23 @@ def split_range_by_votes(running_range, num_votes, vote_thr=2):
             # needed in case run of just 1
             e = s + 1 if e is None else e
             # append and reset
-            split_voted_ranges.append([s, e])
+            curr_range = List.empty_list(types.int64)
+            curr_range.extend([s, e])
+            split_voted_ranges.append(curr_range)
             s = None
             e = None
 
     # finish off the last run
     if s is not None:
         e = s + 1 if e is None else e
-        split_voted_ranges.append([s, e])
+        curr_range = List.empty_list(types.int64)
+        curr_range.extend([s, e])
+        split_voted_ranges.append(curr_range)
 
     return split_voted_ranges
 
 @numba.jit(nopython=True)
-def extend_range(range1, range2, num_votes):
+def extend_range(range1, range2, num_votes: np.array) -> Tuple[np.array, np.array]:
     r"""Merges together two overlapping runs and updates the number
     of votes at each index within the range.
 
@@ -522,9 +533,11 @@ def extend_range(range1, range2, num_votes):
         # if range2 extends past range1
         # then add more votes to list
         # and update range1
-        extension = [1 for _ in range(end_offset)]
+
         range1[1] = range2[1]
-        num_votes.extend(extension)
+        extension = np.ones((end_offset), dtype=np.int64)
+        np.concatenate((num_votes, extension))
+
     elif end_offset < 0:
         # adjust last_index because range2 doesn't
         # extend as far as range1
@@ -554,14 +567,16 @@ def rle_voting(ranges, vote_thr=2, init_index=None, term_index=None):
     """
     assert vote_thr > 1, "For vote_thr of 1 use join_ranges instead!"
     # ranges that past the vote_thr
-    voted_ranges = []
+    voted_ranges = List.empty_list(List.empty_list(types.int64))
 
     # initialize starting range and votes
     # for each index in the range
     running_range = None
-    num_votes = None
+    num_votes = np.array((), dtype=np.int64)
+    # num_votes = None
 
     for range1,range2 in zip(ranges[:-1], ranges[1:]):
+        print("Ranges:", range1, range2, running_range)
         if init_index is not None:
             if range1[0] < init_index:
                 continue
@@ -569,7 +584,11 @@ def rle_voting(ranges, vote_thr=2, init_index=None, term_index=None):
         if running_range is None:
             running_range = range1
             # all indices get 1 vote from range1
-            num_votes = [1 for _ in range(range1[1] - range1[0])]
+            votes_range = range1[1]-range1[0]
+            num_votes = np.ones(votes_range, dtype=np.int64)
+            print("????", num_votes)
+            print("@@@", running_range[1], range2[0])
+            # num_votes = np.oneList([1 for _ in range(range1[1] - range1[0])])
 
         # if starting index in range 2 is greater
         # than the end index of the running range there
@@ -580,12 +599,15 @@ def rle_voting(ranges, vote_thr=2, init_index=None, term_index=None):
                 split_range_by_votes(running_range, num_votes, vote_thr)
             )
             running_range = None
-            num_votes = None
+            # num_votes = None
+            num_votes = np.array((), dtype=np.int64)
+            print("!!!!", num_votes)
         else:
             # extend the running range and accumulate votes
             running_range, num_votes = extend_range(
                 running_range, range2, num_votes
             )
+            print("!!!!1", num_votes)
 
         if term_index is not None and running_range is not None:
             if running_range[1] > term_index:
@@ -594,8 +616,10 @@ def rle_voting(ranges, vote_thr=2, init_index=None, term_index=None):
     # if range was still going at the endsplit_range_by_votes(running_range, num_votes, vote_thr)
     # of the loop then finish processing it
     if running_range is not None:
+        split_votes = split_range_by_votes(running_range, num_votes, vote_thr)
+        # print("SPLITVOTES: ", split_votes, running_range, num_votes)
         voted_ranges.extend(
-            split_range_by_votes(running_range, num_votes, vote_thr)
+            split_votes
         )
 
     return voted_ranges
