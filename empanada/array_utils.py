@@ -602,15 +602,12 @@ def rle_voting(ranges, vote_thr=2, init_index=None, term_index=None):
         if running_range[1] < range2[0]:
             # add ranges and reset
             split_range = split_range_by_votes(running_range, num_votes, vote_thr)
-            
-            # for r in split_range:
             voted_ranges = np.vstack((voted_ranges, split_range))
            
-            running_range = np.empty(shape=(0), dtype=np.int64)
-            num_votes = np.empty(shape=(0), dtype=np.int64)
+            running_range = np.empty(shape=0, dtype=np.int64)
+            num_votes = np.empty(shape=0, dtype=np.int64)
         else:
             # extend the running range and accumulate votes
-
             running_range, num_votes = extend_range(
                 running_range, range2, num_votes
             )
@@ -622,15 +619,8 @@ def rle_voting(ranges, vote_thr=2, init_index=None, term_index=None):
     # if range was still going at the endsplit_range_by_votes(running_range, num_votes, vote_thr)
     # of the loop then finish processing it
     if running_range is not None:
-
         split_range = split_range_by_votes(running_range, num_votes, vote_thr)
         voted_ranges = np.vstack((voted_ranges, split_range))
-        # split_votes = split_range_by_votes(running_range, num_votes, vote_thr)
-        # print("SPLITVOTES: ", split_votes, running_range, num_votes)
-        # voted_ranges.extend(
-        #     split_votes
-        # )
-
     
     return voted_ranges
 
@@ -677,22 +667,26 @@ def _join_ranges(ranges):
         joined: np.ndarray of (m, 2) non-overlapping ranges.
 
     """
-    joined = []
-    running_range = None
+    joined = np.empty(shape=(0,2), dtype=np.int64)
+    running_range = np.empty(shape=0, dtype=np.int64)
+    # Running_range can't be None as this prevents 
+    # numba from being able to determine a data type
+
     for range1,range2 in zip(ranges[:-1], ranges[1:]):
-        if running_range is None:
+        if running_range.shape == (0,):
             running_range = range1
 
         if running_range[1] >= range2[0]:
             running_range[1] = max(running_range[1], range2[1])
         else:
-            joined.append(running_range)
-            running_range = None
+            # running_range = running_range[None, :] 
+            joined = np.vstack((joined, running_range[None, :]))
+            running_range = np.empty(shape=0, dtype=np.int64)
 
-    if running_range is not None:
-        joined.append(running_range)
+    if running_range.shape != (0,):
+        joined = np.vstack((joined, running_range[None, :]))
     else:
-        joined.append(range2)
+        joined = np.vstack((joined, range2[None, :]))
 
     return joined
 
@@ -706,18 +700,19 @@ def join_ranges(list_of_ranges):
 
 @numba.jit(nopython=True)
 def invert_ranges(ranges, size):
-    inverse_ranges = []
+    inverse_ranges = np.empty(shape=(0,2), dtype=np.int64)
     if ranges[0][0] > 0:
-        inverse_ranges.append([0, ranges[0][0]])
+        inverse_ranges = np.vstack((inverse_ranges, np.array([[0, ranges[0][0]]])))
         
     for range1, range2 in zip(ranges[:-1], ranges[1:]):
         s = range1[1]
         e = range2[0]
         if s != e:
-            inverse_ranges.append([s, e])
+            inverse_ranges = np.vstack((inverse_ranges, np.array([s, e])[None, :]))
             
     if ranges[-1][1] < size:
-        inverse_ranges.append([ranges[-1][1], size])
+        start_range = ranges[-1][1]
+        inverse_ranges = np.vstack((inverse_ranges, np.array([start_range, size])[None, :]))
         
     return inverse_ranges
 
