@@ -49,7 +49,7 @@ def cast2dtype(segm):
 
     return segm.astype(m_type)
 
-# @numba.jit
+@numba.jit
 def _mask_watershed_jit(mask, marker_locations, flat_neighborhood, output):
     r"""A simplified implementation of the watershed algorithm that assumes
     the watershed image is a binary labelmap.
