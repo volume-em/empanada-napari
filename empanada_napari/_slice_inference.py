@@ -16,7 +16,6 @@ from skimage.draw import polygon
 
 
 def test_widget():
-    import cv2
     from time import time
     from torch.cuda import device_count
     from napari.qt.threading import thread_worker
