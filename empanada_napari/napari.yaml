@@ -2,6 +2,9 @@ name: empanada-napari
 schema_version: 0.1.0
 contributions:
   commands:
+  - id: empanada-napari.open_docs
+    title: EMPANADA DOCUMENTATION
+    python_name: empanada_napari._open_docs:open_documentation
   - id: empanada-napari.test_widget
     title: Create 2D Inference (Parameter Testing)
     python_name: empanada_napari._slice_inference:test_widget
@@ -74,9 +77,10 @@ contributions:
 #  - id: empanada-napari.get_prediction_quality_numbers
 #    title: Get Prediction Quality Numbers
 #    python_name: empanada_napari._accuracy_metrics:test_model_performance_widget
-
-
+  
   widgets:
+  - command: empanada-napari.open_docs
+    display_name: READ DOCUMENTATION
   - command: empanada-napari.test_widget
     display_name: 2D Inference (Parameter Testing)
   - command: empanada-napari.volume_inference_widget

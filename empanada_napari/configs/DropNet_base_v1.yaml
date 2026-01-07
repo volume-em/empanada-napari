@@ -31,3 +31,6 @@ norms:
 padding_factor: 512
 thing_list:
 - 1
+description: >
+  DropNet was fine-tuned on a curated dataset of ~2,000 images and specializes in segmenting lipid droplets while ignoring look-alike granules.
+  The underlying architecture is Panoptic DeepLab, allowing it to separate tightly clustered droplets and handle variable staining patterns.

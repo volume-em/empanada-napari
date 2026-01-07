@@ -1,9 +1,9 @@
 include LICENSE
 include README.md
 include requirements.txt
-recursive-include empanada_napari/resources
-recursive-include empanada_napari/training
-recursive-include empanada_napari/configs
+recursive-include empanada_napari/resources *
+recursive-include empanada_napari/training *
+recursive-include empanada_napari/configs *
 include empanada_napari/configs/DropNet_base_v1.yaml
 include empanada_napari/configs/NucleoNet_base_v1.yaml
 

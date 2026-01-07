@@ -64,7 +64,7 @@ def filter_small_labels():
 
     remove_options = {
         'Small labels': 'Small labels',
-        'Boundary labels': 'Boundary labels'
+        'Boundary labels (slow)': 'Boundary labels (slow)'
     }
 
     apply_options = {
@@ -110,7 +110,7 @@ def filter_small_labels():
 
                 else:
                     labels = labels_
-            elif remove_opt == 'Boundary labels':
+            elif remove_opt == 'Boundary labels (slow)':
                 labels_, labels_removed = remove_boundary_labels(labels[plane] if labels.ndim > 2 else labels)
                 if labels.ndim > 2:
                     labels[plane] = labels_
@@ -121,13 +121,13 @@ def filter_small_labels():
             for label in tqdm(range(labels.shape[0])):
                 if remove_opt == 'Small labels':
                     labels[label], labels_removed = filter_out_small_label_areas(labels[label], min_area)
-                elif remove_opt == 'Boundary labels':
+                elif remove_opt == 'Boundary labels (slow)':
                     labels[label], labels_removed = remove_boundary_labels(labels[label])
 
         else:
             if remove_opt == 'Small labels':
                 labels, labels_removed = filter_out_small_label_areas(labels, min_area)
-            elif remove_opt == 'Boundary labels':
+            elif remove_opt == 'Boundary labels (slow)':
                 labels, labels_removed = remove_boundary_labels(labels)
         if labels_removed == 0:
             return

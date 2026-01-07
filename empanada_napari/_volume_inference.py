@@ -66,7 +66,7 @@ def volume_inference_widget():
                             label='Segmentation Confidence Thr'),
         center_confidence_thr=dict(widget_type='FloatSpinBox', value=0.1, min=0.05, max=0.9, step=0.05,
                                    label='Center Confidence Thr'),
-        min_distance_object_centers=dict(widget_type='SpinBox', value=3, min=1, max=21, step=1,
+        min_distance_object_centers=dict(widget_type='SpinBox', value=3, min=1, max=35, step=1,
                                          label='Centers Min Distance'),
         fine_boundaries=dict(widget_type='CheckBox', text='Fine Boundaries', value=False,
                              tooltip='Finer boundaries between objects'),
