@@ -1,7 +1,5 @@
-import numba
 import pytest
 import numpy as np
-from pytest import param
 from empanada.array_utils import _box_iou, intersection_from_ranges, split_range_by_votes, \
                                 extend_range, rle_voting, _join_ranges, invert_ranges
 
