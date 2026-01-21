@@ -1,7 +1,16 @@
 import math
+import dask
+import joblib
+import zarr
 import numba
+import itertools
+
 import numpy as np
+import numpy.typing as npt
+
+from joblib import delayed
 from multiprocessing import Pool
+from typing import Any, Callable, Generator
 from empanada.array_utils import put, rle_to_ranges, ranges_to_rle
 
 __all__ = [
@@ -134,15 +143,15 @@ def zarr_fill_instances(array, instances, processes=4):
         
         zmodulo = d * h * w
         zdivisor = dc * h * w
-        ranges = np.array(chunk_ranges(ranges, zmodulo, zdivisor))
+        ranges = np.ndarray(chunk_ranges(ranges, zmodulo, zdivisor))
                           
         ymodulo = h * w
         ydivisor = hc * w
-        ranges = np.array(chunk_ranges(ranges, ymodulo, ydivisor))
+        ranges = np.ndarray(chunk_ranges(ranges, ymodulo, ydivisor))
                           
         xmodulo = w
         xdivisor = wc
-        ranges = np.array(chunk_ranges(ranges, xmodulo, xdivisor))
+        ranges = np.ndarray(chunk_ranges(ranges, xmodulo, xdivisor))
         
         # get chunk_ids for each range
         zc = (ranges[:, 0] % zmodulo) // zdivisor
@@ -173,3 +182,102 @@ def zarr_fill_instances(array, instances, processes=4):
     # return because it's done inplace
     with Pool(processes) as pool:
         pool.map(fill_zarr_mp, arg_iter)
+
+
+
+#### Helper Functions I Added ####
+
+def _indices_of_tiles(array: np.ndarray | zarr.Array | dask.array.core.Array) \
+    -> Generator[tuple[slice, ...], None, None]:
+    r"""Generates the indices representing tiles in a 2d Zarr/dask array"""
+
+    if array.ndim != 2:
+        raise ValueError("Expected a 2D array")
+
+    tile_size = 512
+    overlap = 64
+    
+    step = tile_size - overlap
+    height, width = array.shape
+
+    for y in range(0, height, step):
+        for x in range(0, width, step):
+            yield (
+                slice(y, min(y + tile_size, height)),
+                slice(x, min(x + tile_size, width)),
+            )
+
+def _apply_to_tile(
+    f: Callable[[npt.NDArray[Any]], npt.NDArray[Any]],
+    input_array: np.ndarray | zarr.Array | dask.array.core.Array,
+    output_array: np.ndarray | zarr.Array | dask.array.core.Array,
+    tile_index: slice,
+) -> None:
+    """
+    Copy a specific chunk of data from one array to another, applying a function in between.
+
+    Parameters
+    ----------
+    f :
+        Function to apply to slice of data.
+    input_array :
+        Array to read from.
+    output_array :
+        Array to write to.
+    chunk_index :
+        Array slice of data to process.
+    """
+    print(f"Reading index {tile_index}...")
+    tile = input_array[tile_index] # Get value(s)/sub-array at the indices of the tile
+    tile = f(tile) # Apply function to that sub-array 
+    print(f"Writing index {tile_index}...")
+    output_array[tile_index] = tile # Write that sub-array to the tile index of the new array (a copy of the orig)
+
+
+def _check_same_shape(array_1: np.ndarray | zarr.Array | dask.array.core.Array,
+                     array_2: np.ndarray | zarr.Array | dask.array.core.Array) -> None:
+    """
+    Check that two arrays have the same shape and chunks.
+
+    Raises
+    ------
+    ValueError
+        If the arrays don't have the same shape or chunks.
+    """
+    if array_1.shape != array_2.shape:
+        raise ValueError(
+            f"Input shape ({array_1.shape}) != output shape {array_2.shape}"
+        )
+    
+    ### Not sure if we will be using chunks here... double check.
+    ### Commented out for now
+    # if array_1.chunks != array_2.chunks:
+    #     raise ValueError(
+    #         f"Input chunk ({array_1.chunks}) != output chunks {array_2.chunks}"
+    #     )
+
+delayed_apply_to_tile = delayed(_apply_to_tile)
+
+def _chunkwise_jobs(
+    f: Callable[[npt.NDArray[Any]], npt.NDArray[Any]],
+    *,
+    input_array: np.ndarray | zarr.Array | dask.array.core.Array,
+    output_array: np.ndarray | zarr.Array | dask.array.core.Array,
+) -> list[joblib.delayed]:
+    """
+    Apply a function to all chunks of a Zarr array.
+
+    Parameters
+    ----------
+    f :
+        Function to apply to each chunk.
+    input_array :
+        Array to read from.
+    output_array :
+        Array to write to.
+    """
+    _check_same_shape(input_array, output_array)
+    return [
+        delayed_apply_to_tile(f, input_array, output_array, index)
+        for index in _indices_of_tiles(output_array)
+    ]

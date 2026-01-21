@@ -2,9 +2,9 @@ name: empanada-napari
 schema_version: 0.1.0
 contributions:
   commands:
-  - id: empanada-napari.test_widget
+  - id: empanada-napari.slice_inference_widget
     title: Create 2D Inference (Parameter Testing)
-    python_name: empanada_napari._slice_inference:test_widget
+    python_name: empanada_napari._slice_inference:slice_inference_widget
   - id: empanada-napari.volume_inference_widget
     title: Create 3D Inference
     python_name: empanada_napari._volume_inference:volume_inference_widget
@@ -77,7 +77,7 @@ contributions:
 
 
   widgets:
-  - command: empanada-napari.test_widget
+  - command: empanada-napari.slice_inference_widget
     display_name: 2D Inference (Parameter Testing)
   - command: empanada-napari.volume_inference_widget
     display_name: 3D Inference
