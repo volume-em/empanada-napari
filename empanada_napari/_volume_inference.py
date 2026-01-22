@@ -35,7 +35,7 @@ class VolumeInferenceWidget:
             median_slices: int = 3,
             min_size: int = 500,
             min_extent: int = 5,
-            maximum_objects_per_class: int = 10000,
+            maximum_objects_per_class: str = '10000',
             inference_plane: str = 'xy',
 
             label_erosion: int = 0,
@@ -47,14 +47,14 @@ class VolumeInferenceWidget:
             allow_one_view: bool = False,
 
             store_dir: str = 'no zarr storage',
-            chunk_size: int | str = 256,
+            chunk_size: int|list[int] = 256,
 
             pbar: widgets.ProgressBar = None
     ):
         self.viewer = viewer
         self.label_head = label_head
         self.image_layer = image_layer
-        self.model_config = model_config
+        self.model_config_name = model_config
         self.use_gpu = use_gpu
         self.use_quantized = use_quantized
         self.multigpu = multigpu
@@ -69,7 +69,7 @@ class VolumeInferenceWidget:
         self.median_slices = median_slices
         self.min_size = min_size
         self.min_extent = min_extent
-        self.maximum_objects_per_class = maximum_objects_per_class
+        self.maximum_objects_per_class = int(maximum_objects_per_class)
         self.inference_plane = inference_plane
 
         self.label_erosion = label_erosion
@@ -81,8 +81,10 @@ class VolumeInferenceWidget:
         self.allow_one_view = allow_one_view
 
         self.store_dir = store_dir
+        self.last_config = None
+        self.engine = None
 
-        chunk_size = chunk_size.split(',')
+        if type(chunk_size) == int: chunk_size = [chunk_size] 
         if len(chunk_size) == 1:
             self.chunk_size = tuple(int(chunk_size[0]) for _ in range(3))
         else:
@@ -138,17 +140,18 @@ class VolumeInferenceWidget:
                 worker.returned.connect(self.start_consensus_worker)
                 worker.start()
 
-            case True, False:
+            case True, False: # For testing orthoplane inference
                 trackers_dict = self._orthoplane_inference(self.engine, image)
                 return trackers_dict
 
             case False, True:
-                worker = self.stack_inference(self.widget.engine, image, self.inference_plane)
+                worker = self.stack_inference(self.engine, image, self.inference_plane)
                 worker.returned.connect(self._new_segmentation)
                 worker.returned.connect(self.start_postprocess_worker)
                 worker.start()
 
-            case False, False:
+            case False, False: # For testing stack inference
+                print(f"Now running stack inference in test mode:")
                 stack, axis_name, trackers_dict = self._stack_inference(self.engine, image, self.inference_plane)
                 return stack, axis_name, trackers_dict       
         return
@@ -161,7 +164,7 @@ class VolumeInferenceWidget:
         )
 
         if update_engine:
-            self.widget.engine = Engine3d(
+            self.engine = Engine3d(
                 self.model_config,
                 inference_scale=self.downsampling,
                 median_kernel_size=self.median_slices,
@@ -180,13 +183,13 @@ class VolumeInferenceWidget:
                 chunk_size=self.chunk_size,
                 label_erosion=self.label_erosion,
                 label_dilation=self.label_dilation,
-                fill_holes_in_segmentation=self.fill_holes_in_segmentation
+                fill_holes_in_segmentation=self.fill_holes
             )
-            self.widget.last_config = self.model_config_name
-            self.widget.using_gpu = self.use_gpu
+            self.last_config = self.model_config_name
+            self.using_gpu = self.use_gpu
 
         elif self.multigpu:
-            self.widget.engine = MultiGPUEngine3d(
+            self.engine = MultiGPUEngine3d(
                 self.model_config,
                 inference_scale=self.downsampling,
                 median_kernel_size=self.median_slices,
@@ -202,11 +205,11 @@ class VolumeInferenceWidget:
                 store_url=self.store_url,
                 chunk_size=self.chunk_size
             )
-            self.widget.last_config = self.model_config_name
+            self.last_config = self.model_config_name
 
         else:
             # update the parameters
-            self.widget.engine.update_params(
+            self.engine.update_params(
                 inference_scale=self.downsampling,
                 median_kernel_size=self.median_slices,
                 nms_kernel=self.min_distance_object_centers,
@@ -222,7 +225,7 @@ class VolumeInferenceWidget:
                 chunk_size=self.chunk_size,
                 label_erosion=self.label_erosion,
                 label_dilation=self.label_dilation,
-                fill_holes_in_segmentation=self.fill_holes_in_segmentation
+                fill_holes_in_segmentation=self.fill_holes
             )
         return
 
@@ -279,18 +282,18 @@ class VolumeInferenceWidget:
 
     def start_postprocess_worker(self, *args):
         trackers_dict = args[0][2]
-        postprocess_worker = self.stack_postprocessing(
+        postprocess_worker = stack_postprocessing(
             trackers_dict, self.store_url, self.model_config, label_divisor=self.maximum_objects_per_class,
-            min_size=self.min_size, min_extent=self.min_extent, dtype=self.widget.engine.dtype, chunk_size=self.chunk_size
+            min_size=self.min_size, min_extent=self.min_extent, dtype=self.engine.dtype, chunk_size=self.chunk_size
         )
         postprocess_worker.yielded.connect(self._new_class_stack)
         postprocess_worker.start()
 
     def start_consensus_worker(self, trackers_dict):
-        consensus_worker = self.tracker_consensus(
+        consensus_worker = tracker_consensus(
             trackers_dict, self.store_url, self.model_config, label_divisor=self.maximum_objects_per_class,
             pixel_vote_thr=self.pixel_vote_thr, allow_one_view=self.allow_one_view,
-            min_size=self.min_size, min_extent=self.min_extent, dtype=self.widget.engine.dtype,
+            min_size=self.min_size, min_extent=self.min_extent, dtype=self.engine.dtype,
             chunk_size=self.chunk_size
         )
         consensus_worker.yielded.connect(self._new_class_stack)
@@ -366,7 +369,7 @@ def volume_inference_widget():
                            tooltip='Median filter size'),
         min_size=dict(widget_type='SpinBox', value=500, min=0, max=1e6, step=100, label='Min Size (Voxels)'),
         min_extent=dict(widget_type='SpinBox', value=5, min=0, max=1000, step=1, label='Min Box Extent'),
-        maximum_objects_per_class=dict(widget_type='LineEdit', value=10000, label='Max objects per class in 3D',
+        maximum_objects_per_class=dict(widget_type='LineEdit', value='10000', label='Max objects per class in 3D',
                                        tooltip='Maximum number of objects per class in 3D inference'),
                                        # value here was originally '10000' string, may break
         inference_plane=dict(widget_type='ComboBox', choices=['xy', 'xz', 'yz'], value='xy', label='Inference plane',
@@ -406,7 +409,7 @@ def volume_inference_widget():
             use_quantized,
             multigpu,
 
-            # parameters2d_head,
+            parameters2d_head,
             downsampling,
             confidence_thr,
             center_confidence_thr,
@@ -414,14 +417,14 @@ def volume_inference_widget():
             fine_boundaries,
             semantic_only,
 
-            # parameters_stack_head,
+            parameters_stack_head,
             median_slices,
             min_size,
             min_extent,
             maximum_objects_per_class,
             inference_plane,
 
-            # parameters_ortho_head,
+            parameters_ortho_head,
             label_erosion,
             label_dilation,
             fill_holes_in_segmentation,
@@ -430,7 +433,7 @@ def volume_inference_widget():
             pixel_vote_thr,
             allow_one_view,
 
-            # storage_head,
+            storage_head,
             store_dir,
             chunk_size,
 

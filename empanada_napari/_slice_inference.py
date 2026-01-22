@@ -137,7 +137,7 @@ class SliceInferenceWidget:
                     test_worker.returned.connect(self._show_batch_stack)
                 test_worker.start()
 
-            case True, False:
+            case True, False:# For testing batch slice inference
                 seg, _, _, _, _ = self._run_model_batch(self.engine, self.image, self.fill_holes)
                 return seg
             
@@ -149,7 +149,7 @@ class SliceInferenceWidget:
                     inference_worker.returned.connect(self._show_test_result)
                 inference_worker.start()
 
-            case False, False:
+            case False, False: # For testing non-batch slice inference
                 seg, axis, plane, y, x = self._run_model(self.engine, image2d, axis, plane, y, x, self.fill_holes)
                 return seg, axis, plane, y, x
         return

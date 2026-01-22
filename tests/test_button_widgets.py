@@ -3,13 +3,14 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 import pytest
 import numpy as np
-from empanada_napari._volume_inference import _stack_inference, _orthoplane_inference
+from empanada_napari._volume_inference import VolumeInferenceWidget
 from empanada_napari.inference import Engine2d, Engine3d, stack_postprocessing, tracker_consensus
 from empanada_napari.utils import get_configs
 from empanada.config_loaders import read_yaml
 from empanada_napari._slice_inference import SliceInferenceWidget
 
 
+# ---------------- Dataset Fixtures ----------------
 # Replace with an actual 2d img & maybe assert result == some values
 @pytest.fixture
 def image_2d():
@@ -70,7 +71,9 @@ def image_3d():
     image = np.clip(image, 0, 255).astype(np.uint8)
     return image
 
-def test_slice_inf(make_napari_viewer_proxy, image_2d):
+
+# ---------------- Tests ----------------
+def test_slice_inference(make_napari_viewer_proxy, image_2d):
     viewer = make_napari_viewer_proxy()
     image_layer = viewer.add_image(image_2d)
     model_config = 'MitoNet_v1_mini'
@@ -83,50 +86,39 @@ def test_slice_inf(make_napari_viewer_proxy, image_2d):
     assert isinstance(seg, np.ndarray)
     assert seg.shape == image_2d.shape
 
-    
 
-def test_volume_inference_stack_inference(image_3d):   
-    model_configs = get_configs()
-    # model_name = list(model_configs.keys())[2]
-    model_name = 'MitoNet_v1_mini'
-    model_config = read_yaml(model_configs[model_name])
-
-    engine = Engine3d(model_config) 
+def test_volume_stack_inference(make_napari_viewer_proxy, image_3d):
+    viewer = make_napari_viewer_proxy()
+    image_layer = viewer.add_image(image_3d)
+    model_config = 'MitoNet_v1_mini'
     inference_plane = 'xy'
 
-    _, axis, trackers_dict = _stack_inference(engine, image_3d, inference_plane)
-    worker = stack_postprocessing(trackers=trackers_dict, store_url=None, model_config=model_config)
-
-    results = []
-    worker.yielded.connect(lambda r: results.append(r))
-    worker.run()
-    stack_out, class_name, instances = results[-1]
-
-    assert stack_out is not None
-    assert stack_out.shape == image_3d.shape
-
-
-def test_volume_inference_orthoplane_inference(image_3d):   
-    model_configs = get_configs()
-    model_name = 'MitoNet_v1_mini'
-    model_config = read_yaml(model_configs[model_name])
-
-    engine = Engine3d(model_config) 
-    gen = _orthoplane_inference(engine, image_3d)
-
-    while True:
-        try:
-            next(gen)
-        except StopIteration as e:
-            trackers_dict = e.value
-            break
-
-    worker = tracker_consensus(trackers=trackers_dict, store_url=None, model_config=model_config)
+    inference_config = VolumeInferenceWidget(viewer=viewer,
+                                    image_layer=image_layer,
+                                    model_config=model_config,
+                                    return_panoptic=True,
+                                    inference_plane=inference_plane)
     
-    results = []
-    worker.yielded.connect(lambda r: results.append(r))
-    worker.run()
-    consensus_vol_out, class_name, consensus_instances = results[-1]
+    stack, axis_name, trackers_dict = inference_config.config_and_run_inference(use_thread=False)
+    assert isinstance(stack, np.ndarray)
+    assert stack.shape == image_3d.shape
 
-    assert consensus_vol_out is not None
-    assert consensus_vol_out.shape == image_3d.shape
+    
+
+def test_volume_inference_orthoplane_inference(make_napari_viewer_proxy, image_3d):   
+    viewer = make_napari_viewer_proxy()
+    image_layer = viewer.add_image(image_3d)
+    # model_name = list(model_configs.keys())[2]
+    model_config = 'MitoNet_v1_mini'
+
+    inference_config = VolumeInferenceWidget(viewer=viewer,
+                                    image_layer=image_layer,
+                                    model_config=model_config,
+                                    return_panoptic=True,
+                                    use_gpu=True,
+                                    orthoplane=True)
+    
+    result = inference_config.config_and_run_inference(use_thread=False)
+    for stack, axis_name in result:
+        assert isinstance(stack, np.ndarray)
+        assert stack.shape == image_3d.shape
