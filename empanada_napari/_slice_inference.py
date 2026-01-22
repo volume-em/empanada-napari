@@ -8,6 +8,7 @@ from napari.layers import Image, Labels
 from magicgui import magicgui, widgets
 from skimage import measure
 from scipy.ndimage import binary_fill_holes
+from qtpy.QtWidgets import QScrollArea
 
 # from magicgui.tqdm import tqdm
 from tqdm import tqdm
@@ -66,8 +67,7 @@ class SliceInferenceWidget:
         self.using_quantized = use_quantized
         self.viewport = viewport
         self.confine_to_roi = confine_to_roi
-        self.output_to_layer = output_to_layer
-        self.output_layer = output_layer
+        self.output_to_layer, self.output_layer = output_to_layer, output_layer
         self.pbar = pbar
         self.maximum_objects_per_class = int(maximum_objects_per_class)
         self.last_config = None
@@ -83,9 +83,9 @@ class SliceInferenceWidget:
 
         if self.last_config is None:
             self.last_config = self.model_config_name
-            
-        self.get_engine()
 
+        self.get_engine()
+                
         # Get the 2d slice from the image (Can mock a layer/viewer object in the tests)
         if not self.batch_mode:
             if self.confine_to_roi:
@@ -98,6 +98,29 @@ class SliceInferenceWidget:
             print(f'Image of size {image2d.shape} sliced at plane {plane} from axis {axis}')
             if type(image2d) == da.core.Array:
                 image2d = image2d.compute()
+
+        
+        #### The part above should return a 2D slice from the Zarr input fine
+
+            #### Now, we need to __split the 2D slice into tiles__ because the slice is still very big!
+            #### This part should only run if we have an image that is a zarr or dask arr
+                # Need a condition that the array should meet to run inference over tiles... maybe arr size?
+            
+                #### Setup jobs:
+                # if batch_mode false
+
+                #create image2dout array
+                # image2dout = np.zeros_like(image2d)
+
+                # compute segmentation on each of the tiles
+                # run in parallel
+                # Pass the result to _show_test_result() or _store_test_result()
+
+                # if batch_mode true
+                # compute segmentation using the run_model_batch
+                # run in parallel
+                # Pass result to _show/store_test_result()
+
 
         # Run the inference methods (either threaded or synchronously)
         match (self.batch_mode, use_thread):
@@ -165,7 +188,6 @@ class SliceInferenceWidget:
                 fine_boundaries=self.fine_boundaries,
                 tile_size=self.tile_size,
             )
-
         self.last_config = self.model_config_name
         return
 
@@ -440,8 +462,8 @@ def slice_inference_widget():
     from napari.layers import Image, Labels
     from magicgui import widgets
 
-    model_configs = get_configs()
     logo = abspath(__file__, 'resources/empanada_logo.png')
+    model_configs = get_configs()
 
     # define magicgui params
     gui_params = dict(
@@ -485,6 +507,7 @@ def slice_inference_widget():
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 2D Inference',
         layout='vertical',
+        scrollable=True,
         pbar={'visible': False, 'max': 0, 'label': 'Running...'},
         **gui_params
     )
@@ -511,7 +534,6 @@ def slice_inference_widget():
             output_layer: Labels,
             pbar: widgets.ProgressBar
     ):
-        from napari.qt.threading import thread_worker
 
         # instantiate the class
         inference_config = SliceInferenceWidget(viewer=viewer,
@@ -534,12 +556,18 @@ def slice_inference_widget():
             confine_to_roi=confine_to_roi,
             output_to_layer=output_to_layer,
             output_layer=output_layer,
-            pbar=pbar)
+            pbar=pbar
+            )
         
         # method that configures & runs inference
         # use_thread=True will output result to napari layer/viewer
         inference_config.config_and_run_inference(use_thread=True)
         pbar.show()
+
+    # make the scroll available
+    scroll = QScrollArea()
+    scroll.setWidget(widget._widget._qwidget)
+    widget._widget._qwidget = scroll
 
     return widget
 
