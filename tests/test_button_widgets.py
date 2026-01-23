@@ -97,7 +97,7 @@ def image_3d():
          ({"use_gpu":True}, (100, 100)),
          ({"use_quantized":True}, (100, 100)),
          ({"viewport":True}, (99, 99)),
-         ({"confine_to_roi":True}, (100, 100)),
+         ({"confine_to_roi":True}, (19, 14)),
          ({"output_to_layer":True}, (100, 100))],
          ids=["DropNet", "MitoNet", "NucleoNet", "fine_boundaries", "semantic_only", 
               "fill_holes_in_segmentation", "batch_mode", "use_gpu", "use_quantized", 
@@ -106,13 +106,20 @@ def test_slice_inference(make_napari_viewer_proxy, image_2d, test_args, expected
     viewer = make_napari_viewer_proxy()
     image_layer = viewer.add_image(image_2d)
     
-    if "model_config" in test_args.keys():
-        model_config = test_args["model_config"]
-    else:
+    if "model_config" not in test_args.keys():
         test_args["model_config"] = "MitoNet_v1_mini"
 
     if "output_to_layer" in test_args.keys():
-        test_args["output_layer"] = image_layer
+        output_layer = viewer.add_image(np.zeros_like(image_2d))
+        test_args["output_layer"] = output_layer
+
+    if "confine_to_roi" in test_args.keys():
+        triangle = np.array([[11, 13], [30, 6], [30, 20]])
+        viewer.add_shapes(triangle,
+                          shape_type='polygon',
+                          edge_width=5,
+                          edge_color='coral',
+                          face_color='royalblue')
 
     inference_config = SliceInferenceWidget(viewer=viewer,
                                     image_layer=image_layer,
@@ -121,7 +128,7 @@ def test_slice_inference(make_napari_viewer_proxy, image_2d, test_args, expected
     seg = results[0]
 
     assert isinstance(seg, np.ndarray)
-    assert seg.shape == expected_shape
+    assert np.asarray(seg).shape == expected_shape
 
 def test_slice_inference_batch(make_napari_viewer_proxy, image_2d, test_args):
     viewer = make_napari_viewer_proxy()
