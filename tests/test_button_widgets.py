@@ -73,19 +73,71 @@ def image_3d():
 
 
 # ---------------- Tests ----------------
-def test_slice_inference(make_napari_viewer_proxy, image_2d):
+# @pytest.mark.parametrize(['testing_params'],
+#     [(dict(fine_boundaries=True)),
+#      (dict(semantic_only=True)),
+#      (dict(fill_holes_in_segmentation=True)),
+#      (dict(batch_mode=True)),
+#      (dict(use_gpu=True)),
+#      (dict(use_quantized=True)),
+#      (dict(viewport=True)),
+#      (dict(confine_to_roi=True)),
+#      (dict(output_to_layer=True))
+#      ])
+
+@pytest.mark.parametrize(("test_args", "expected_shape"),
+    [
+        ({"model_config":"DropNet_base_v1"}, (100, 100)),
+        ({"model_config":"MitoNet_v1"}, (100, 100)),
+        ({"model_config":"NucleoNet_base_v1"}, (100, 100)),
+         ({"fine_boundaries":True}, (100, 100)),
+         ({"semantic_only":True}, (100, 100)),
+         ({"fill_holes_in_segmentation":True}, (100, 100)),
+         ({"batch_mode":True}, (100,)),
+         ({"use_gpu":True}, (100, 100)),
+         ({"use_quantized":True}, (100, 100)),
+         ({"viewport":True}, (99, 99)),
+         ({"confine_to_roi":True}, (100, 100)),
+         ({"output_to_layer":True}, (100, 100))],
+         ids=["DropNet", "MitoNet", "NucleoNet", "fine_boundaries", "semantic_only", 
+              "fill_holes_in_segmentation", "batch_mode", "use_gpu", "use_quantized", 
+              "viewport", "confine_to_roi", "output_to_layer"])
+def test_slice_inference(make_napari_viewer_proxy, image_2d, test_args, expected_shape):
+    viewer = make_napari_viewer_proxy()
+    image_layer = viewer.add_image(image_2d)
+    
+    if "model_config" in test_args.keys():
+        model_config = test_args["model_config"]
+    else:
+        test_args["model_config"] = "MitoNet_v1_mini"
+
+    if "output_to_layer" in test_args.keys():
+        test_args["output_layer"] = image_layer
+
+    inference_config = SliceInferenceWidget(viewer=viewer,
+                                    image_layer=image_layer,
+                                    **test_args)
+    results = inference_config.config_and_run_inference(use_thread=False)
+    seg = results[0]
+
+    assert isinstance(seg, np.ndarray)
+    assert seg.shape == expected_shape
+
+def test_slice_inference_batch(make_napari_viewer_proxy, image_2d, test_args):
     viewer = make_napari_viewer_proxy()
     image_layer = viewer.add_image(image_2d)
     model_config = 'MitoNet_v1_mini'
 
     inference_config = SliceInferenceWidget(viewer=viewer,
                                     image_layer=image_layer,
-                                    model_config=model_config)
-    
-    seg, axis, plane, y, x = inference_config.config_and_run_inference(use_thread=False)
+                                    model_config=model_config,
+                                    **test_args)
+    results = inference_config.config_and_run_inference(use_thread=False)
+
+    seg = results[0]
+
     assert isinstance(seg, np.ndarray)
     assert seg.shape == image_2d.shape
-
 
 def test_volume_stack_inference(make_napari_viewer_proxy, image_3d):
     viewer = make_napari_viewer_proxy()
@@ -102,8 +154,6 @@ def test_volume_stack_inference(make_napari_viewer_proxy, image_3d):
     stack, axis_name, trackers_dict = inference_config.config_and_run_inference(use_thread=False)
     assert isinstance(stack, np.ndarray)
     assert stack.shape == image_3d.shape
-
-    
 
 def test_volume_inference_orthoplane_inference(make_napari_viewer_proxy, image_3d):   
     viewer = make_napari_viewer_proxy()

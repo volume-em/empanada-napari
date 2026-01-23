@@ -138,7 +138,7 @@ class SliceInferenceWidget:
                 test_worker.start()
 
             case True, False:# For testing batch slice inference
-                seg, _, _, _, _ = self._run_model_batch(self.engine, self.image, self.fill_holes)
+                seg, _, _, _, _ = self._run_model_batch(self.engine, self.image_layer.data, self.fill_holes)
                 return seg
             
             case False, True:
@@ -191,13 +191,19 @@ class SliceInferenceWidget:
         self.last_config = self.model_config_name
         return
 
-    # ---------------- Helper methods ----------------
-    def _fill_holes(self, mask: np.ndarray) -> np.ndarray:
-        for rp in tqdm(measure.regionprops(mask), desc="Filling holes in labels"):
-            minr, minc, maxr, maxc = rp.bbox
-            tmp = mask[minr:maxr, minc:maxc]
-            tmp = binary_fill_holes(tmp.astype(bool))
-            mask[minr:maxr, minc:maxc] = tmp.astype(mask.dtype) * rp.label
+    # ---------------- Helper methods ----------------    
+    def _fill_holes_in_segmentation(self, mask):
+        unique_indices = np.unique(mask)
+        rprops = measure.regionprops(mask)
+
+        # crop labels and then apply fill holes
+        for rp in tqdm(rprops, desc='filling holes in labels:'):
+            if rp.label in unique_indices and rp.label > 0:
+                minr, minc, maxr, maxc = rp.bbox
+
+                tmp = mask[minr:maxr, minc:maxc]
+                tmp = binary_fill_holes(tmp.astype(bool))
+                mask[minr:maxr, minc:maxc] = tmp.astype(mask.dtype) * rp.label
         return mask
     
     def _viewer_slices(self, image_layer, plane=None, axis=None):
@@ -328,7 +334,7 @@ class SliceInferenceWidget:
         return self._run_model(engine, image, axis, plane, y, x, fill_holes)
 
     @thread_worker
-    def _run_model_batch(self, engine, image, fill_holes):
+    def run_model_batch(self, engine, image, fill_holes):
         return self._run_model_batch(engine, image, fill_holes)
     
     def _run_model(self, engine, image, axis, plane, y, x, fill_holes):
@@ -336,7 +342,7 @@ class SliceInferenceWidget:
         start = time()
         seg = engine.infer(image)
         if fill_holes:
-            seg = self.fill_holes_in_segmentation(seg)
+            seg = self._fill_holes_in_segmentation(seg)
         print(f'Inference time:', time() - start)
         return seg, axis, plane, y, x
 
@@ -354,7 +360,7 @@ class SliceInferenceWidget:
 
                 seg = engine.infer(img_slice)
                 if fill_holes:
-                    seg = self.fill_holes_in_segmentation(seg)
+                    seg = self._fill_holes_in_segmentation(seg)
                 segmentations.append(seg)
 
             # stack segmentations with padding
@@ -377,9 +383,12 @@ class SliceInferenceWidget:
             plane = 0
             seg = engine.infer(image)
             if fill_holes:
-                seg = self.fill_holes_in_segmentation(seg)
+                seg = self._fill_holes_in_segmentation(seg)
             print(f'Inference time:', time() - start)
             return seg, None, None, None, None
+        
+        else:
+            raise Exception(f'Batch mode supports 2d and 3d, got {image.ndim}d.')
     
     # ---------------- GUI result functions ----------------
     def _show_batch_stack(self, *args):
