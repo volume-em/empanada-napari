@@ -394,10 +394,7 @@ class SliceInferenceWidget:
     def _show_batch_stack(self, *args):
         stack = args[0]
         self.viewer.add_labels(stack, name=self.image_layer.name + '_batch_segs')
-
-        if self.pbar:
-            self.pbar.hide()
-        return stack
+        self.pbar.hide()
 
     def _show_test_result(self, *args):
         seg, axis, plane, y, x = args[0]
