@@ -143,15 +143,15 @@ def zarr_fill_instances(array, instances, processes=4):
         
         zmodulo = d * h * w
         zdivisor = dc * h * w
-        ranges = np.ndarray(chunk_ranges(ranges, zmodulo, zdivisor))
+        ranges = np.array(chunk_ranges(ranges, zmodulo, zdivisor))
                           
         ymodulo = h * w
         ydivisor = hc * w
-        ranges = np.ndarray(chunk_ranges(ranges, ymodulo, ydivisor))
+        ranges = np.array(chunk_ranges(ranges, ymodulo, ydivisor))
                           
         xmodulo = w
         xdivisor = wc
-        ranges = np.ndarray(chunk_ranges(ranges, xmodulo, xdivisor))
+        ranges = np.array(chunk_ranges(ranges, xmodulo, xdivisor))
         
         # get chunk_ids for each range
         zc = (ranges[:, 0] % zmodulo) // zdivisor

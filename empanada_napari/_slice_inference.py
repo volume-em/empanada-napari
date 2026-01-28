@@ -138,8 +138,8 @@ class SliceInferenceWidget:
                 test_worker.start()
 
             case True, False:# For testing batch slice inference
-                seg, _, _, _, _ = self._run_model_batch(self.engine, self.image_layer.data, self.fill_holes)
-                return seg
+                seg, axis, plane, y, x = self._run_model_batch(self.engine, self.image_layer.data, self.fill_holes)
+                return seg, axis, plane, y, x
             
             case False, True:
                 inference_worker = self.run_model(self.engine, image2d, axis, plane, y, x, self.fill_holes)
@@ -394,7 +394,10 @@ class SliceInferenceWidget:
     def _show_batch_stack(self, *args):
         stack = args[0]
         self.viewer.add_labels(stack, name=self.image_layer.name + '_batch_segs')
-        self.pbar.hide()
+
+        if self.pbar:
+            self.pbar.hide()
+        return stack
 
     def _show_test_result(self, *args):
         seg, axis, plane, y, x = args[0]
@@ -431,6 +434,7 @@ class SliceInferenceWidget:
 
         self.pbar.hide()
 
+
     def _store_test_result(self, *args):
         seg, axis, plane, y, x = args[0]
 
@@ -460,7 +464,6 @@ class SliceInferenceWidget:
         self.output_layer.visible = True
 
         self.pbar.hide()
-
 
 # ---------------- Napari GUI wrapper ----------------
 def slice_inference_widget():
