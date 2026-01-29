@@ -1,29 +1,23 @@
-import math
 import numpy as np
+import dask.array as da
+from time import time
+from tqdm import tqdm
+from skimage.draw import polygon
+
+from empanada.config_loaders import read_yaml
+from empanada_napari.inference import Engine2d
+from empanada_napari.utils import get_configs, abspath
+
+from napari import Viewer
+from napari.layers import Image, Labels, Shapes
 from napari_plugin_engine import napari_hook_implementation
 
-import napari
-from napari import Viewer
-from napari.layers import Image, Labels
 from magicgui import magicgui, widgets
 from skimage import measure
 from scipy.ndimage import binary_fill_holes
 from qtpy.QtWidgets import QScrollArea
-
-# from magicgui.tqdm import tqdm
-from tqdm import tqdm
-import dask.array as da
-from skimage.draw import polygon
-
-from empanada_napari.utils import get_configs, abspath
-import cv2
-from time import time
 from torch.cuda import device_count
 from napari.qt.threading import thread_worker
-# Import when users activate plugin
-from empanada_napari.inference import Engine2d
-from empanada_napari.utils import get_configs, abspath
-from empanada.config_loaders import read_yaml
 
 
 class SliceInferenceWidget:
@@ -89,7 +83,7 @@ class SliceInferenceWidget:
         # Get the 2d slice from the image (Can mock a layer/viewer object in the tests)
         if not self.batch_mode:
             if self.confine_to_roi:
-                shapes_layer = [layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Shapes)][0]
+                shapes_layer = [layer for layer in self.viewer.layers if isinstance(layer, Shapes)][0]
                 image2d, y, x, y_max, x_max, binary_mask = self._get_roi_slice(self.image_layer, shapes_layer)
                 image2d[binary_mask == False] = 0
                 axis, plane = "overloaded", self.image_layer.data.shape
@@ -521,7 +515,7 @@ def slice_inference_widget():
         **gui_params
     )
     def widget(
-            viewer: napari.viewer.Viewer,
+            viewer: Viewer,
             label_head,
             image_layer: Image,
             model_config,

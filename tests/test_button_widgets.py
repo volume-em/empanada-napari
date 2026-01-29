@@ -12,7 +12,6 @@ FILE_3D = "hela_cell_em.tif"
 
 
 # ---------------- Dataset Fixtures ----------------
-# Replace with an actual 2d img & maybe assert result == some values
 @pytest.fixture
 def image_3d():
     rng = np.random.default_rng(0)
@@ -41,10 +40,10 @@ def image_3d():
 def tutorial_3d_image():
     dataset_3d = "https://zenodo.org/records/15311513"
     datapath =  os.path.join(DATA_DIR, FILE_3D)
-    
     if os.path.isfile(datapath) is False:
         subprocess.run(['zenodo_get', dataset_3d, "-o", DATA_DIR])
-    image = imread(datapath)        
+    image = imread(datapath)
+    print(type(image), image.shape)
     return image
 
 # ---------------- Tests ----------------
@@ -80,10 +79,8 @@ class TestSliceInference:
     def tutorial_2d_image(self):
         dataset_2d = "https://zenodo.org/records/15319873"
         datapath =  os.path.join(DATA_DIR, FILE_2D)
-
         if os.path.isfile(datapath) is False:
             subprocess.run(['zenodo_get', dataset_2d, "-o", DATA_DIR])
-        
         image = imread(datapath)
         print(type(image), image.shape)
         return image
@@ -147,9 +144,9 @@ class TestSliceInference:
                                         **test_args)
         seg, _, _, _, _ = inference_config.config_and_run_inference(use_thread=False)
         num_labels = np.unique(seg[seg!=0]).size
-        print(seg.shape, seg, "num of segmentations:", num_labels)
 
         assert num_labels in range(expected_labels-100, expected_labels+100)
+
 
 class TestVolumeInferenceStack:
 
@@ -211,6 +208,7 @@ class TestVolumeInferenceStack:
 
         assert num_labels in range(max(0, expected_labels-20), expected_labels+20)
 
+   
 
 class TestVolumeInferenceOrthoplane:
     
@@ -270,4 +268,3 @@ class TestVolumeInferenceOrthoplane:
         for stack, axis_name in result:
             num_labels = np.unique(stack[stack!=0]).size
             assert num_labels in range(max(0, expected_labels-20), expected_labels+20)
-            
