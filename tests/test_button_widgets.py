@@ -6,10 +6,12 @@ import numpy as np
 from tifffile import imread
 from empanada_napari._slice_inference import SliceInferenceWidget
 from empanada_napari._volume_inference import VolumeInferenceWidget
+from empanada_napari.utils import get_configs
+
 DATA_DIR = "datasets_for_tests"
 FILE_2D = "nanotomy_islet_rat375_crop1.tif"
 FILE_3D = "hela_cell_em.tif"
-
+MODEL_NAMES=list(get_configs().keys()) # DropNet, MitoNet, MitoNet_mini, NucleoNet
 
 # ---------------- Dataset Fixtures ----------------
 @pytest.fixture
@@ -88,10 +90,9 @@ class TestSliceInference:
 
     @pytest.mark.parametrize(("test_args", "expected_shape"),
     [
-        ({"model_config":"MitoNet_v1", "batch_mode":True, "use_gpu":True}, (100, 100)),
-        ({"model_config":"DropNet_base_v1"}, (100, 100)),
-        ({"model_config":"MitoNet_v1"}, (100, 100)),
-        ({"model_config":"NucleoNet_base_v1"}, (100, 100)),
+        ({"model_config":MODEL_NAMES[1], "batch_mode":True, "use_gpu":True}, (100, 100)),
+        ({"model_config":MODEL_NAMES[0]}, (100, 100)),
+        ({"model_config":MODEL_NAMES[3]}, (100, 100)),
          ({"fine_boundaries":True}, (100, 100)),
          ({"semantic_only":True}, (100, 100)),
          ({"fill_holes_in_segmentation":True}, (100, 100)),
@@ -101,14 +102,14 @@ class TestSliceInference:
          ({"viewport":True}, (99, 99)),
          ({"confine_to_roi":True}, (19, 14)),
          ({"output_to_layer":True}, (100, 100))],
-         ids=["tutorial_params","DropNet", "MitoNet", "NucleoNet", "fine_boundaries", "semantic_only", 
+         ids=["tutorial_params", "DropNet", "NucleoNet", "fine_boundaries", "semantic_only", 
               "fill_holes_in_segmentation", "batch_mode", "use_gpu", "use_quantized", 
               "viewport", "confine_to_roi", "output_to_layer"])
     def test_slice_inference_sanity(self, make_napari_viewer_proxy, image_2d, test_args, expected_shape):
         viewer = make_napari_viewer_proxy()
         image_layer = viewer.add_image(image_2d)
         if "model_config" not in test_args.keys():
-            test_args["model_config"] = "MitoNet_v1_mini"
+            test_args["model_config"] = MODEL_NAMES[2] #"MitoNet_v1_mini"
 
         if "output_to_layer" in test_args.keys():
             output_layer = viewer.add_image(np.zeros_like(image_2d))
@@ -129,10 +130,10 @@ class TestSliceInference:
 
     @pytest.mark.parametrize(("test_args", "expected_labels"),
     [
-        ({"model_config":"MitoNet_v1", "batch_mode":True}, 3400),
-        ({"model_config":"DropNet_base_v1"}, 840),
-        ({"model_config":"MitoNet_v1_mini"}, 2400),
-        ({"model_config":"NucleoNet_base_v1"}, 830)],
+        ({"model_config":MODEL_NAMES[1], "batch_mode":True}, 3400),
+        ({"model_config":MODEL_NAMES[0]}, 840),
+        ({"model_config":MODEL_NAMES[2]}, 2400),
+        ({"model_config":MODEL_NAMES[3]}, 830)],
          ids=["tutorial_params", "DropNet", "MitoNetMini", "NucleoNet"])
     def test_slice_inference_dataset(self, make_napari_viewer_proxy, tutorial_2d_image, test_args, expected_labels):
         viewer = make_napari_viewer_proxy()
@@ -152,9 +153,9 @@ class TestVolumeInferenceStack:
 
     @pytest.mark.parametrize(("test_args", "expected_shape"),
     [
-        ({"model_config":"DropNet_base_v1"}, (100, 100, 100)),
-        ({"model_config":"MitoNet_v1"}, (100, 100, 100)),
-        ({"model_config":"NucleoNet_base_v1"}, (100, 100, 100)),
+        ({"model_config":MODEL_NAMES[0]}, (100, 100, 100)),
+        ({"model_config":MODEL_NAMES[1]}, (100, 100, 100)),
+        ({"model_config":MODEL_NAMES[3]}, (100, 100, 100)),
          ({"use_gpu":True}, (100, 100, 100)), 
          ({"use_quantized":True}, (100, 100, 100)),
          ({"multigpu":True}, (100, 100, 100)),
@@ -171,7 +172,7 @@ class TestVolumeInferenceStack:
         image_layer = viewer.add_image(image_3d)
         inference_plane = "xy"
         if "model_config" not in test_args.keys():
-            test_args["model_config"] = "MitoNet_v1_mini"
+            test_args["model_config"] = MODEL_NAMES[2]
 
         inference_config = VolumeInferenceWidget(viewer=viewer,
                                         image_layer=image_layer,
@@ -186,10 +187,10 @@ class TestVolumeInferenceStack:
 
     @pytest.mark.parametrize(("test_args", "expected_labels"),
     [
-        ({"model_config":"DropNet_base_v1"}, 0),
-        ({"model_config":"MitoNet_v1"}, 120),
-        ({"model_config":"MitoNet_v1_mini"}, 100),
-        ({"model_config":"NucleoNet_base_v1"}, 1)],
+        ({"model_config":MODEL_NAMES[0]}, 0),
+        ({"model_config":MODEL_NAMES[1]}, 120),
+        ({"model_config":MODEL_NAMES[2]}, 100),
+        ({"model_config":MODEL_NAMES[3]}, 1)],
          ids=["DropNet", "MitoNet", "MitoNet_v1_mini", "NucleoNet"])
     def test_volume_stack_inference_dataset(self, make_napari_viewer_proxy, tutorial_3d_image, test_args, expected_labels):
         viewer = make_napari_viewer_proxy()
@@ -214,9 +215,9 @@ class TestVolumeInferenceOrthoplane:
     
     @pytest.mark.parametrize(("test_args", "expected_shape"),
     [
-        ({"model_config":"DropNet_base_v1"}, (100, 100, 100)),
-        ({"model_config":"MitoNet_v1"}, (100, 100, 100)),
-        ({"model_config":"NucleoNet_base_v1"}, (100, 100, 100)),
+        ({"model_config":MODEL_NAMES[0]}, (100, 100, 100)),
+        ({"model_config":MODEL_NAMES[1]}, (100, 100, 100)),
+        ({"model_config":MODEL_NAMES[3]}, (100, 100, 100)),
          ({"use_gpu":True}, (100, 100, 100)), 
          ({"use_quantized":True}, (100, 100, 100)),
          ({"multigpu":True}, (100, 100, 100)),
@@ -232,7 +233,7 @@ class TestVolumeInferenceOrthoplane:
         viewer = make_napari_viewer_proxy()
         image_layer = viewer.add_image(image_3d)
         if "model_config" not in test_args.keys():
-            test_args["model_config"] = "MitoNet_v1_mini"
+            test_args["model_config"] = MODEL_NAMES[2]
 
         inference_config = VolumeInferenceWidget(viewer=viewer,
                                         image_layer=image_layer,
@@ -248,10 +249,10 @@ class TestVolumeInferenceOrthoplane:
 
     @pytest.mark.parametrize(("test_args", "expected_labels"),
     [
-        ({"model_config":"DropNet_base_v1"}, 0),
-        ({"model_config":"MitoNet_v1"}, 120),
-        ({"model_config":"MitoNet_v1_mini"}, 100),
-        ({"model_config":"NucleoNet_base_v1"}, 1)],
+        ({"model_config":MODEL_NAMES[0]}, 0),
+        ({"model_config":MODEL_NAMES[1]}, 120),
+        ({"model_config":MODEL_NAMES[2]}, 100),
+        ({"model_config":MODEL_NAMES[3]}, 1)],
          ids=["DropNet", "MitoNet", "MitoNet_v1_mini", "NucleoNet"])
     def test_volume_inference_orthoplane_inference_dataset(self, make_napari_viewer_proxy, tutorial_3d_image, test_args, expected_labels):   
         viewer = make_napari_viewer_proxy()

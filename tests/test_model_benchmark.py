@@ -3,11 +3,15 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 import subprocess
 import pytest
 from tifffile import imread
+from empanada_napari.utils import get_configs
 from empanada_napari._slice_inference import SliceInferenceWidget
 from empanada_napari._volume_inference import VolumeInferenceWidget
+
 DATA_DIR = "datasets_for_tests"
 FILE_2D = "nanotomy_islet_rat375_crop1.tif"
 FILE_3D = "hela_cell_em.tif"
+MODEL_NAMES = list(get_configs().keys()) # DropNet, MitoNet, MitoNet_mini, NucleoNet
+
 
 
 # ---------------- Dataset Fixture ----------------
@@ -36,10 +40,10 @@ class TestSliceInference:
 
     @pytest.mark.parametrize("test_args",
     [
-        ({"model_config":"MitoNet_v1", "batch_mode":True}),
-        ({"model_config":"DropNet_base_v1"}),
-        ({"model_config":"MitoNet_v1_mini"}),
-        ({"model_config":"NucleoNet_base_v1"})],
+        ({"model_config":MODEL_NAMES[0]}),
+        ({"model_config":MODEL_NAMES[1]}),
+        ({"model_config":MODEL_NAMES[2]}),
+        ({"model_config":MODEL_NAMES[3]})],
          ids=["tutorial_params", "DropNet", "MitoNetMini", "NucleoNet"])
     def test_slice_inference_benchmark(self, make_napari_viewer_proxy, tutorial_2d_image, test_args, benchmark):
         viewer = make_napari_viewer_proxy()
@@ -55,10 +59,10 @@ class TestVolumeInferenceStack:
     
     @pytest.mark.parametrize("test_args",
     [
-        ({"model_config":"DropNet_base_v1"}),
-        ({"model_config":"MitoNet_v1"}),
-        ({"model_config":"MitoNet_v1_mini"}),
-        ({"model_config":"NucleoNet_base_v1"})],
+        ({"model_config":MODEL_NAMES[0]}),
+        ({"model_config":MODEL_NAMES[1]}),
+        ({"model_config":MODEL_NAMES[2]}),
+        ({"model_config":MODEL_NAMES[3]})],
          ids=["DropNet", "MitoNet", "MitoNet_v1_mini", "NucleoNet"])
     def test_volume_stack_inference_benchmark(self, make_napari_viewer_proxy, tutorial_3d_image, test_args, benchmark):
         viewer = make_napari_viewer_proxy()
@@ -77,10 +81,10 @@ class TestVolumeInferenceOrthoplane:
 
     @pytest.mark.parametrize("test_args",
     [
-        ({"model_config":"DropNet_base_v1"}),
-        ({"model_config":"MitoNet_v1"}),
-        ({"model_config":"MitoNet_v1_mini"}),
-        ({"model_config":"NucleoNet_base_v1"})],
+        ({"model_config":MODEL_NAMES[0]}),
+        ({"model_config":MODEL_NAMES[1]}),
+        ({"model_config":MODEL_NAMES[2]}),
+        ({"model_config":MODEL_NAMES[3]})],
          ids=["DropNet", "MitoNet", "MitoNet_v1_mini", "NucleoNet"])
     def test_volume_stack_inference_benchmark(self, make_napari_viewer_proxy, tutorial_3d_image, test_args, benchmark):
         viewer = make_napari_viewer_proxy()
