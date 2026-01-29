@@ -41,7 +41,7 @@ def tutorial_3d_image():
     dataset_3d = "https://zenodo.org/records/15311513"
     datapath =  os.path.join(DATA_DIR, FILE_3D)
     if os.path.isfile(datapath) is False:
-        subprocess.run(['zenodo_get', dataset_3d, "-o", DATA_DIR])
+        subprocess.run(["zenodo_get", dataset_3d, "-o", DATA_DIR])
     image = imread(datapath)
     print(type(image), image.shape)
     return image
@@ -80,7 +80,7 @@ class TestSliceInference:
         dataset_2d = "https://zenodo.org/records/15319873"
         datapath =  os.path.join(DATA_DIR, FILE_2D)
         if os.path.isfile(datapath) is False:
-            subprocess.run(['zenodo_get', dataset_2d, "-o", DATA_DIR])
+            subprocess.run(["zenodo_get", dataset_2d, "-o", DATA_DIR])
         image = imread(datapath)
         print(type(image), image.shape)
         return image
@@ -116,7 +116,7 @@ class TestSliceInference:
 
         if "confine_to_roi" in test_args.keys():
             triangle = np.array([[11, 13], [30, 6], [30, 20]])
-            viewer.add_shapes(triangle, shape_type='polygon', edge_width=5)
+            viewer.add_shapes(triangle, shape_type="polygon", edge_width=5)
 
         inference_config = SliceInferenceWidget(viewer=viewer,
                                         image_layer=image_layer,
@@ -169,7 +169,7 @@ class TestVolumeInferenceStack:
     def test_volume_stack_inference_sanity(self, make_napari_viewer_proxy, image_3d, test_args, expected_shape):
         viewer = make_napari_viewer_proxy()
         image_layer = viewer.add_image(image_3d)
-        inference_plane = 'xy'
+        inference_plane = "xy"
         if "model_config" not in test_args.keys():
             test_args["model_config"] = "MitoNet_v1_mini"
 
@@ -194,7 +194,7 @@ class TestVolumeInferenceStack:
     def test_volume_stack_inference_dataset(self, make_napari_viewer_proxy, tutorial_3d_image, test_args, expected_labels):
         viewer = make_napari_viewer_proxy()
         image_layer = viewer.add_image(tutorial_3d_image)
-        inference_plane = 'xy'
+        inference_plane = "xy"
 
         inference_config = VolumeInferenceWidget(viewer=viewer,
                                         image_layer=image_layer,
