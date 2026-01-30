@@ -97,7 +97,7 @@ def stack_postprocessing(
 
         # decode and fill the instances
         if zarr_store is not None:
-            stack_vol = zarr_store.create_dataset(
+            stack_vol = zarr_store.create_array(
                 f'{class_name}', shape=shape3d, dtype=class_dtype,
                 overwrite=True, chunks=chunk_size
             )
@@ -475,7 +475,7 @@ class Engine3d:
         # faster IO with chunking only along
         # the given axis, orthogonal viewing is slow though
         if self.zarr_store is not None and self.save_panoptic:
-            stack = self.zarr_store.create_dataset(
+            stack = self.zarr_store.create_array(
                 f'panoptic_{axis_name}', shape=shape3d,
                 dtype=self.dtype, chunks=self.chunk_size, overwrite=True
             )

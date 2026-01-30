@@ -72,7 +72,6 @@ def _mask_watershed_jit(mask, marker_locations, flat_neighborhood, output):
 
     while h:
         elem = heapq.heappop(h)
-
         age += 1
         for n_offset in flat_neighborhood:
             neighbor_index = n_offset + elem[1]
@@ -85,6 +84,7 @@ def _mask_watershed_jit(mask, marker_locations, flat_neighborhood, output):
 
             output[neighbor_index] = output[elem[1]]
             heapq.heappush(h, (age, neighbor_index))
+            
 
 def mask_watershed(mask, markers, connectivity=1):
     r"""A simplified implementation of the watershed algorithm that assumes

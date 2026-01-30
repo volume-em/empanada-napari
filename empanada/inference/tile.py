@@ -1,6 +1,6 @@
 import numpy as np
-from cztile.fixed_total_area_strategy import AlmostEqualBorderFixedTotalAreaStrategy2D
-from cztile.tiling_strategy import Rectangle as czrect
+from cztile.fixed_total_area_strategy_2d import AlmostEqualBorderFixedTotalAreaStrategy2D
+from cztile.tiling_strategy import Region2D as czrect
 from empanada.array_utils import rle_voting, merge_rles
 
 __all__ = ['Tiler']
