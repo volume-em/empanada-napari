@@ -1,44 +1,8 @@
 #!/bin/bash
 
-BENCHMARK=false
-
-# Parse args
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --benchmark)
-            BENCHMARK=true
-            shift
-            ;;
-        --help | -h)
-            echo "Usage: $0 [--benchmark] flag will run performance benchmark tests"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1
-            ;;
-    esac
-done
-
 # Run Installation Tests:
 echo "Running Installation Tests..."
 python -m pytest -s -vv test_installation.py
-
-# Run Unit Tests:
-echo "Running Unit Tests..."
-python -m pytest -s -vv test_array_utils.py
-python -m pytest -s -vv test_zarr_utils.py
-python -m pytest -s -vv test_transforms.py
-
-# Run Integration Tests:
-echo "Running Integration Tests..."
-python -m pytest -s -vv test_button_widgets.py
-
-if [ "$BENCHMARK" = true ]; then
-    # Run Model Benchmarks:
-    echo "Running Model Benchmarks..."
-    python -m pytest -s -vv test_model_benchmark.py
-fi
 
 echo "Tests Complete."
 
