@@ -13,7 +13,6 @@ FILE_3D = "hela_cell_em.tif"
 MODEL_NAMES = list(get_configs().keys()) # DropNet, MitoNet, MitoNet_mini, NucleoNet
 
 
-
 # ---------------- Dataset Fixture ----------------
 @pytest.fixture
 def tutorial_3d_image():

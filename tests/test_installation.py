@@ -30,7 +30,7 @@ def assert_cuda_usable():
 
 @pytest.mark.parametrize("use_quantized", [(True), (False)])
 @pytest.mark.parametrize("use_gpu", [(True), (False)])
-def test_model_uses_correct_device(use_quantized, model_config_name, use_gpu):
+def test_model_uses_correct_device(use_quantized, use_gpu):
     from empanada.config_loaders import read_yaml
     from empanada_napari.utils import get_configs
     from empanada_napari.utils import load_model_to_device
