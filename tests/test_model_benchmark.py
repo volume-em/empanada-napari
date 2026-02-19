@@ -8,6 +8,7 @@ from empanada_napari._slice_inference import SliceInferenceWidget
 from empanada_napari._volume_inference import VolumeInferenceWidget
 
 from .conftest import MODEL_NAMES, gen_slice_dset_params, gen_vol_dset_params, gen_ortho_dset_params
+pytestmark = pytest.mark.benchmark()
 
 DATA_DIR = "datasets_for_tests"
 FILE_2D = "nanotomy_islet_rat375_crop1.tif"
@@ -27,7 +28,6 @@ def tutorial_3d_image():
     return image
 
 # ---------------- Tests ----------------
-@pytest.mark.benchmark
 class TestSliceInference:   
     @pytest.fixture
     def tutorial_2d_image(self):
@@ -51,9 +51,7 @@ class TestSliceInference:
                                         **test_args)
         benchmark(inference_config.config_and_run_inference, use_thread=False)
 
-@pytest.mark.benchmark
 class TestVolumeInference:
-    
     @pytest.mark.parametrize(("test_args", "expected_labels"), gen_vol_dset_params(),
             ids=["MitoNet", "DropNet", "NucleoNet", "MitoNetMini"])
     def test_volume_stack_inference_benchmark(self, tutorial_3d_image, test_args, expected_labels, benchmark):
