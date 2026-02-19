@@ -51,7 +51,7 @@ class TestSliceInference:
                                         **test_args)
         benchmark(inference_config.config_and_run_inference, use_thread=False)
 
-
+@pytest.mark.benchmark
 class TestVolumeInference:
     
     @pytest.mark.parametrize(("test_args", "expected_labels"), gen_vol_dset_params(),
