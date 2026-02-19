@@ -27,6 +27,7 @@ def tutorial_3d_image():
     return image
 
 # ---------------- Tests ----------------
+@pytest.mark.benchmark
 class TestSliceInference:   
     @pytest.fixture
     def tutorial_2d_image(self):
