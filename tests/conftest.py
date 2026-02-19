@@ -1,6 +1,16 @@
 import os
 import re
+import pytest
 from empanada_napari.utils import get_configs
+
+'''Skip Benchmarking Tests unless specifically called'''
+# def pytest_collection_modifyitems(config, items):
+def skip_benchmark_tests(config, items):
+    if not config.getoption('-m'):
+        skip_me = pytest.mark.skip(reason="use `-m benchmark` to run this test")
+        for item in items:
+            if "benchmark" in item.keywords:
+                item.add_marker(skip_me)
 
 '''Generate Parameters For test_button_widgets inference tests & benchmarking'''
 MODEL_NAMES = {} 

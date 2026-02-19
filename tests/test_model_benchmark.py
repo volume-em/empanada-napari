@@ -2,6 +2,7 @@ import os
 import subprocess
 import pytest
 from tifffile import imread
+from napari.components import ViewerModel
 from empanada_napari.utils import get_configs
 from empanada_napari._slice_inference import SliceInferenceWidget
 from empanada_napari._volume_inference import VolumeInferenceWidget
@@ -40,8 +41,8 @@ class TestSliceInference:
 
     @pytest.mark.parametrize(("test_args", "expected_labels"), gen_slice_dset_params(),
             ids=["tutorial_params", "DropNet", "NucleoNet", "MitoNetMini"])
-    def test_slice_inference_benchmark(self, make_napari_viewer_proxy, tutorial_2d_image, test_args, benchmark):
-        viewer = make_napari_viewer_proxy()
+    def test_slice_inference_benchmark(self, tutorial_2d_image, test_args, expected_labels, benchmark):
+        viewer = ViewerModel()
         image_layer = viewer.add_image(tutorial_2d_image)
         inference_config = SliceInferenceWidget(viewer=viewer,
                                         image_layer=image_layer,
@@ -54,8 +55,8 @@ class TestVolumeInference:
     
     @pytest.mark.parametrize(("test_args", "expected_labels"), gen_vol_dset_params(),
             ids=["MitoNet", "DropNet", "NucleoNet", "MitoNetMini"])
-    def test_volume_stack_inference_benchmark(self, make_napari_viewer_proxy, tutorial_3d_image, test_args, benchmark):
-        viewer = make_napari_viewer_proxy()
+    def test_volume_stack_inference_benchmark(self, tutorial_3d_image, test_args, expected_labels, benchmark):
+        viewer = ViewerModel()
         image_layer = viewer.add_image(tutorial_3d_image)
         inference_plane = 'xy'
         inference_config = VolumeInferenceWidget(viewer=viewer,
@@ -69,8 +70,8 @@ class TestVolumeInference:
 
     @pytest.mark.parametrize(("test_args", "expected_labels"), gen_ortho_dset_params(),
             ids=["MitoNet", "DropNet", "NucleoNet", "MitoNetMini"])
-    def test_volume_orthoplane_inference_benchmark(self, make_napari_viewer_proxy, tutorial_3d_image, test_args, benchmark):
-        viewer = make_napari_viewer_proxy()
+    def test_volume_orthoplane_inference_benchmark(self, tutorial_3d_image, test_args, expected_labels, benchmark):
+        viewer = ViewerModel()
         image_layer = viewer.add_image(tutorial_3d_image)
         inference_config = VolumeInferenceWidget(viewer=viewer,
                                         image_layer=image_layer,
