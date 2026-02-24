@@ -1,3 +1,4 @@
+import itertools
 import os, sys, yaml
 import numpy as np
 import requests
@@ -199,3 +200,56 @@ class Preprocessor:
         max_value = np.iinfo(image.dtype).max
         image = normalize(image, self.mean, self.std, max_pixel_value=max_value)
         return {'image': to_tensor(image)}
+
+
+def guess_multiscale(
+    data: list | tuple | np.ndarray,
+) -> bool:
+    """Guess whether the passed data is multiscale, process it accordingly.
+
+    If shape of arrays along first axis is strictly decreasing, the data is
+    multiscale. If it is the same shape everywhere, it is not. Various
+    ambiguous conditions in between will result in a ValueError being raised,
+    or in an "unwrapping" of data, if data contains only one element.
+
+    Parameters
+    ----------
+    data : array or list of array
+        Data that should be checked.
+
+    Returns
+    -------
+    multiscale : bool
+        True if the data is thought to be multiscale, False otherwise.
+    data : list or array
+        The input data, perhaps with the leading axis removed.
+    """
+    # If the data has ndim and is not one-dimensional then cannot be multiscale
+    # If data is a zarr array, this check ensure that subsets of it are not
+    # instantiated. (`for d in data` instantiates `d` as a NumPy array if
+    # `data` is a zarr array.)
+
+    if hasattr(data, 'ndim') and data.ndim > 1:
+        return False
+
+    if isinstance(data, list | tuple) and len(data) == 1:
+        # pyramid with only one level, unwrap
+        return False
+
+    sizes = [d.size for d in data]
+    if len(sizes) <= 1:
+        return False
+
+    consistent = all(s1 > s2 for s1, s2 in itertools.pairwise(sizes))
+    if all(s == sizes[0] for s in sizes):
+        # note: the individual array case should be caught by the first
+        # code line in this function, hasattr(ndim) and ndim > 1.
+        raise ValueError(
+                'Input data should be an array-like object, or a sequence of arrays of decreasing size. Got arrays of single size: {size}')
+        
+    if not consistent:
+        raise ValueError(
+                'Input data should be an array-like object, or a sequence of arrays of decreasing size. Got arrays of single size: {size}')
+
+
+    return True, data

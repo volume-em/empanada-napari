@@ -15,7 +15,7 @@ from torch.cuda import device_count
 from torch.backends.quantized import engine, supported_engines
 from empanada_napari.inference import Engine3d, tracker_consensus, stack_postprocessing
 from empanada_napari.multigpu import MultiGPUEngine3d
-from empanada_napari.utils import get_configs, abspath
+from empanada_napari.utils import get_configs, abspath, guess_multiscale
 from empanada.config_loaders import read_yaml
 
 quantized_supported = True
@@ -120,10 +120,16 @@ class VolumeInferenceWidget:
         self.get_engine()
 
         # Get the 3d slice from the image (Can mock a layer/viewer object in the tests)
-        image = self.image_layer.data
-        if self.image_layer.multiscale:
-            print(f'Multiscale image selected, using highest resolution level!')
-            image = image[0]
+        if self.viewer:
+            image = self.image_layer.data
+            if self.image_layer.multiscale:
+                print(f'Multiscale image selected, using highest resolution level!')
+                image = image[0]
+        else:
+            image = self.image_layer
+            if guess_multiscale(image):
+                print(f'Multiscale image selected, using highest resolution level!')
+                image = image[0]
 
         # Verify that the image doesn't have extraneous channel dimensions
         assert image.ndim in [3, 4], "Only 3D and 4D input images can be handled!"
