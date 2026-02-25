@@ -24,8 +24,6 @@ quantized_supported = True
 if engine in (None or 'none'):
     quantized_supported = False
     
-
-
 class SliceInferenceWidget:
     def __init__(self, 
             image_layer: Image,
@@ -98,6 +96,33 @@ class SliceInferenceWidget:
             print(f'Image of size {image2d.shape} sliced at plane {plane} from axis {axis}')
             if type(image2d) == da.core.Array:
                 image2d = image2d.compute()
+
+        
+        #### The part above should return a 2D slice from the Zarr input fine
+
+            #### Now, we need to __split the 2D slice into tiles__ because the slice is still very big!
+            #### This part should only run if we have an image that is a zarr or dask arr
+                # Need a condition that the array should meet to run inference over tiles... maybe arr size?
+            
+                #### Setup jobs:
+                # if batch_mode false
+
+                #create image2dout array
+                # image2dout = np.zeros_like(image2d)
+
+                # compute segmentation on each of the tiles
+                # run in parallel
+                # Pass the result to _show_test_result() or _store_test_result()
+
+                # if batch_mode true
+                # compute segmentation using the run_model_batch
+                # run in parallel
+                # Pass result to _show/store_test_result()
+
+
+
+
+        
 
         # Run the inference methods (either threaded or synchronously)
         match (self.batch_mode, use_thread):
@@ -463,6 +488,8 @@ def slice_inference_widget():
     gui_params = dict(
         model_config=dict(widget_type='ComboBox', choices=list(model_configs.keys()),
                           value=list(model_configs.keys())[0], label='Model', tooltip='Model to use for inference'),
+        store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Directory', mode='d',
+                       tooltip='location to store segmentations on disk'),
         downsampling=dict(widget_type='ComboBox', choices=[1, 2, 4, 8, 16, 32, 64], value=1, label='Image Downsampling',
                           tooltip='Downsampling factor to apply before inference'),
         confidence_thr=dict(widget_type='FloatSpinBox', value=0.5, min=0.1, max=0.9, step=0.1,
