@@ -53,6 +53,7 @@ class VolumeInferenceWidget:
             pixel_vote_thr: int = 2,
             allow_one_view: bool = False,
 
+            input_dir: str = None,
             store_dir: str = 'no zarr storage',
             chunk_size: int|list[int] = 256,
 
@@ -87,6 +88,9 @@ class VolumeInferenceWidget:
         self.pixel_vote_thr = pixel_vote_thr
         self.allow_one_view = allow_one_view
 
+        self.input_dir = str(input_dir)
+
+        print("!!!!!!!!!!!! INPUT DIR FOR ZARR: ", self.input_dir)
         self.store_dir = str(store_dir)
         self.last_config = None
         self.engine = None
@@ -365,6 +369,11 @@ def volume_inference_widget():
 
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()),
                           value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
+
+        input_head=dict(widget_type='Label', label=f'<h3 text-align="center">Zarr File Input (optional)</h3>'),
+        input_dir=dict(widget_type='FileEdit', value=None, label='Directory', mode='d',
+                       tooltip='location of zarr files'),
+
         use_gpu=dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1,
                      tooltip='If checked, run on GPU 0'),
         use_quantized=dict(widget_type='CheckBox', text='Use quantized model', value=device_count()==0 and quantized_supported,
@@ -426,6 +435,10 @@ def volume_inference_widget():
             viewer: napari.viewer.Viewer,
             label_head,
             image_layer: Image,
+            
+            input_head,
+            input_dir,
+            
             model_config,
             use_gpu,
             use_quantized,
@@ -487,6 +500,7 @@ def volume_inference_widget():
             return_panoptic = return_panoptic,
             pixel_vote_thr = pixel_vote_thr,
             allow_one_view = allow_one_view,
+            input_dir = input_dir,
             store_dir = store_dir,
             chunk_size = chunk_size,
             pbar = pbar
