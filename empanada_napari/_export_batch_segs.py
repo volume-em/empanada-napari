@@ -59,8 +59,8 @@ def export_batch_segs():
         image = image_layer.data
         mask = labels_layer.data
 
-        assert len(image) == len(mask), \
-        f"Image and labels layer must have the same number of images, got {len(image)} and {len(mask)}"
+        assert image.shape[0] == image.shape[0], \
+        f"Image and labels layer must have the same number of images, got {image.shape} and {image.shape}"
 
         if image.ndim == 3:
             if isinstance(image, da.Array):
@@ -69,8 +69,8 @@ def export_batch_segs():
                     for imp in _get_impaths_from_dask(image)
                 ]
             else:
-                zpad = math.ceil(math.log(len(image), 10))
-                imnames = [image_layer.name + '_' + str(n).zfill(zpad) + '.tiff' for n in range(len(image))]
+                zpad = math.ceil(math.log(image.shape[0], 10))
+                imnames = [image_layer.name + '_' + str(n).zfill(zpad) + '.tiff' for n in range(image.shape[0])]
                 # imnames = [str(n).zfill(zpad) + '.tiff' for n in range(len(image))]
 
             if export_option == '3D image':
@@ -85,7 +85,7 @@ def export_batch_segs():
                 io.imsave(os.path.join(outdir, f'masks/{imname}'), seg_stack, check_contrast=False)
 
             else:
-                for i in range(len(image)):
+                for i in range(image.shape[0]):
                     imname = imnames[i]
                     if isinstance(image, da.Array):
                         h, w = image[i].compute().shape

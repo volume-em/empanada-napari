@@ -3,6 +3,11 @@ try:
 except ImportError:
     __version__ = "unknown"
 
+import torch
+if torch.backends.quantized.engine in (None or 'none'):
+    if 'qnnpack' in torch.backends.quantized.supported_engines:
+        torch.backends.quantized.engine = 'qnnpack'
+
 from ._slice_inference import slice_dock_widget
 from ._volume_inference import volume_dock_widget
 from ._finetune import finetuning_dock_widget, get_info_dock_widget
@@ -35,3 +40,4 @@ __all__ = [
     'export_batch_segs_widget',
     'label_counter_widget'
 ]
+
