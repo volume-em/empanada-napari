@@ -23,9 +23,10 @@ if engine in (None or 'none'):
     quantized_supported = False
 
 class VolumeInferenceWidget:
-    def __init__(self, 
+    def __init__(self,
             image_layer: Image,
             model_config: str,
+            multiscale_level: int=0,
             viewer: Viewer = None,
             label_head: dict = None,
             use_gpu: bool = False,
@@ -61,6 +62,7 @@ class VolumeInferenceWidget:
         self.viewer = viewer
         self.label_head = label_head
         self.image_layer = image_layer
+        self.multiscale_level = multiscale_level
         self.model_config_name = model_config
         self.use_gpu = use_gpu
         self.use_quantized = use_quantized
@@ -91,27 +93,27 @@ class VolumeInferenceWidget:
         self.last_config = None
         self.engine = None
 
-        if type(chunk_size) == int: chunk_size = [chunk_size] 
+        if type(chunk_size) == int: chunk_size = [chunk_size]
         if len(chunk_size) == 1:
             self.chunk_size = tuple(int(chunk_size[0]) for _ in range(3))
         else:
             assert len(chunk_size) == 3, f"Chunk size must be 1 or 3 integers, got {chunk_size}"
             self.chunk_size = tuple(int(s) for s in chunk_size)
-        
+
         self._check_option_compatibility()
         self.pbar = pbar
 
 # ---------------- Option handling & inference running entrypoint ----------------
-    def config_and_run_inference(self, use_thread=False):  
+    def config_and_run_inference(self, use_thread=False):
         # Load the model config
         model_configs = get_configs()
         self.model_config = read_yaml(model_configs[self.model_config_name])
 
         if self.last_config is None:
             self.last_config = self.model_config_name
-            
+
         # Create storage url from layer name and model config
-        if self.store_dir == 'no zarr storage': # This is a default - 
+        if self.store_dir == 'no zarr storage': # This is a default -
             self.store_url = None
             print(f'Running without zarr storage directory, this may use a lot of memory!')
         else:
@@ -122,8 +124,11 @@ class VolumeInferenceWidget:
         # Get the 3d slice from the image (Can mock a layer/viewer object in the tests)
         image = self.image_layer.data
         if self.image_layer.multiscale:
-            print(f'Multiscale image selected, using highest resolution level!')
-            image = image[0]
+            print(f'Multiscale image selected, using resolution level {self.multiscale_level}!')
+            if self.multiscale_level <= len(image):
+                image = image[self.multiscale_level]
+            else:
+                raise Exception(f'Maximum multiscale level is {len(image)}, got multiscale level {self.multiscale_level}')
 
         # Verify that the image doesn't have extraneous channel dimensions
         assert image.ndim in [3, 4], "Only 3D and 4D input images can be handled!"
@@ -160,7 +165,7 @@ class VolumeInferenceWidget:
             case False, False: # For testing stack inference
                 print(f"Now running stack inference in test mode:")
                 stack, axis_name, trackers_dict = self._stack_inference(self.engine, image, self.inference_plane)
-                return stack, axis_name, trackers_dict       
+                return stack, axis_name, trackers_dict
         return
 
 # ---------------- Engine management ----------------
@@ -244,7 +249,7 @@ class VolumeInferenceWidget:
             )
 
         return
-    
+
     def _new_layers(self, mask, description, instances=None):
         metadata = {}
         if instances is not None:
@@ -264,6 +269,10 @@ class VolumeInferenceWidget:
             elif shape[-1] in [1, 3, 4]:
                 translate = translate[:-1]
                 scale = scale[:-1]
+
+            if self.multiscale_level > 0:
+                scale = scale * 2 ** (self.multiscale_level) # Need to scale the scaling
+
         self.viewer.add_labels(
             mask, name=f'{self.image_layer.name}-{description}',
             visible=True, metadata=metadata, translate=translate,
@@ -339,7 +348,7 @@ class VolumeInferenceWidget:
         for axis_name in ['xy', 'xz', 'yz']:
             stack, trackers = engine.infer_on_axis(volume, axis_name)
             trackers_dict[axis_name] = trackers
-            
+
             # report instances per class
             for tracker in trackers:
                 class_id = tracker.class_id
@@ -355,11 +364,30 @@ def volume_inference_widget():
     logo = abspath(__file__, 'resources/empanada_logo.png')
     model_configs = get_configs()
 
+    # def on_init(widget):
+    #     ortho_plane_props = [
+    #         'label_erosion',
+    #         'label_dilation',
+    #         'fill_holes_in_segmentation',
+    #         'orthoplane',
+    #         'return_panoptic',
+    #         'pixel_vote_thr',
+    #         'allow_one_view'
+    #     ]
+    #
+    #     for x in ortho_plane_props:
+    #         setattr(getattr(widget, x), 'visible', 'False')
+    #
+    #     def toggle_ortho_plane_visibility()
+
     @magicgui(
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 3D Inference',
         layout='vertical',
         scrollable=True,
+
+        multiscale_level=dict(widget_type='SpinBox', value=0, min=0, label='Multiscale level',
+                             tooltip='What multiscale level should be segmented.'),
 
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()),
                           value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
@@ -394,7 +422,6 @@ def volume_inference_widget():
                                        # value here was originally '10000' string, may break
         inference_plane=dict(widget_type='ComboBox', choices=['xy', 'xz', 'yz'], value='xy', label='Inference plane',
                              tooltip='Image plane along which to run inference. Overwritten, if using ortho-plane.'),
-
         parameters_ortho_head=dict(widget_type='Label',
                                    label=f'<h3 text-align="center">Ortho-plane Parameters (Optional)</h3>'),
         label_erosion=dict(widget_type='SpinBox', value=0, min=0, max=50, step=1, label='Erode Labels',
@@ -424,6 +451,7 @@ def volume_inference_widget():
             viewer: napari.viewer.Viewer,
             label_head,
             image_layer: Image,
+            multiscale_level,
             model_config,
             use_gpu,
             use_quantized,
@@ -478,6 +506,7 @@ def volume_inference_widget():
             min_extent = min_extent,
             maximum_objects_per_class = maximum_objects_per_class,
             inference_plane = inference_plane,
+            multiscale_level=multiscale_level,
             label_erosion = label_erosion,
             label_dilation = label_dilation,
             fill_holes_in_segmentation = fill_holes_in_segmentation,
@@ -489,7 +518,7 @@ def volume_inference_widget():
             chunk_size = chunk_size,
             pbar = pbar
     )
-        
+
         # method that configures & runs inference
         # use_thread=True will output result to napari layer/viewer
         inference_config.config_and_run_inference(use_thread=True)
