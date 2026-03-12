@@ -1,0 +1,43 @@
+name: Run pytests and build+publish docker container if tests pass
+
+on:
+  push:
+    branches:
+      - '**'  # Run on all branches
+
+env:
+  # GitHub container registry (could use dockerhub)
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ${{ matrix.platform }}
+    defaults:
+      run:
+        working-directory: .
+        
+    strategy:
+      matrix:
+        # From tox.ini
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install napari[all]
+          python -m pip install .[test]
+          
+      - name: Run Tests
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          python -m pytest -s -vv tests

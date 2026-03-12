@@ -10,6 +10,17 @@ from empanada_napari.utils import get_configs, abspath
 
 from napari import Viewer
 from napari.layers import Image, Labels, Shapes
+import dask.array as da
+from time import time
+from tqdm import tqdm
+from skimage.draw import polygon
+
+from empanada.config_loaders import read_yaml
+from empanada_napari.inference import Engine2d
+from empanada_napari.utils import get_configs, abspath
+
+from napari import Viewer
+from napari.layers import Image, Labels, Shapes
 from napari_plugin_engine import napari_hook_implementation
 
 from magicgui import magicgui, widgets

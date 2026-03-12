@@ -6,9 +6,10 @@ from napari import Viewer
 from napari.layers import Image
 from napari.qt.threading import thread_worker
 from napari_plugin_engine import napari_hook_implementation
-from magicgui import magicgui, widgets
+from magicgui import widgets, magic_factory
 from qtpy.QtWidgets import QScrollArea
 
+import numpy as np
 import zarr
 import dask.array as da
 import torch
@@ -19,17 +20,17 @@ from empanada_napari.multigpu import MultiGPUEngine3d
 from empanada_napari.utils import get_configs, abspath
 from empanada.config_loaders import read_yaml
 
-from dask.distributed import Client, progress
-
 quantized_supported = True
 if engine in (None or 'none'):
     quantized_supported = False
 
 class VolumeInferenceWidget:
-    def __init__(self, 
+    def __init__(self,
             image_layer: Image,
             model_config: str,
+            multiscale_level: int=0,
             viewer: Viewer = None,
+            label_head: dict = None,
             use_gpu: bool = False,
             use_quantized: bool = False,
             multigpu: bool = False,
@@ -55,14 +56,16 @@ class VolumeInferenceWidget:
             pixel_vote_thr: int = 2,
             allow_one_view: bool = False,
 
-            input_dir: str = None,
-            store_dir: str = 'no zarr storage',
+            use_store_dir: bool = False,
+            store_dir: str = None,
             chunk_size: int|list[int] = 256,
 
             pbar: widgets.ProgressBar = None
     ):
         self.viewer = viewer
+        self.label_head = label_head
         self.image_layer = image_layer
+        self.multiscale_level = multiscale_level
         self.model_config_name = model_config
         self.use_gpu = use_gpu
         self.use_quantized = use_quantized
@@ -89,34 +92,32 @@ class VolumeInferenceWidget:
         self.pixel_vote_thr = pixel_vote_thr
         self.allow_one_view = allow_one_view
 
-        self.input_dir = Path(input_dir)
-
-        print("!!!!!!!!!!!! INPUT DIR FOR ZARR: ", self.input_dir)
+        self.use_store_dir = use_store_dir
         self.store_dir = str(store_dir)
         self.last_config = None
         self.engine = None
 
-        if type(chunk_size) == int: chunk_size = [chunk_size] 
+        if type(chunk_size) == int: chunk_size = [chunk_size]
         if len(chunk_size) == 1:
             self.chunk_size = tuple(int(chunk_size[0]) for _ in range(3))
         else:
             assert len(chunk_size) == 3, f"Chunk size must be 1 or 3 integers, got {chunk_size}"
             self.chunk_size = tuple(int(s) for s in chunk_size)
-        
+
         self._check_option_compatibility()
         self.pbar = pbar
 
 # ---------------- Option handling & inference running entrypoint ----------------
-    def config_and_run_inference(self, use_thread=False):  
+    def config_and_run_inference(self, use_thread=False):
         # Load the model config
         model_configs = get_configs()
         self.model_config = read_yaml(model_configs[self.model_config_name])
 
         if self.last_config is None:
             self.last_config = self.model_config_name
-            
+
         # Create storage url from layer name and model config
-        if self.store_dir == 'no zarr storage': # This is a default - 
+        if not self.use_store_dir: # This is a default -
             self.store_url = None
             print(f'Running without zarr storage directory, this may use a lot of memory!')
         else:
@@ -124,30 +125,15 @@ class VolumeInferenceWidget:
 
         self.get_engine()
 
-
-        ##### This part needs modifying #####
-        # If there is a Zarr input passed, we call the dask function to read it, and get the image
-        # Initially, just see what happens if we pass the image to the inference functions - is it parallel? Does it work?
-
-        if self.input_dir:
-            # Check the extension is .zarr or .ome.zar
-            if self.input_dir.suffix in ['.zarr', '.ome.zarr']:
-                self.store_url = self.input_dir.parent
-                self.store_url = self.store_url.joinpath(f"1-{self.input_dir.name}")
-                self.store_url.mkdir(exist_ok=True)
-                self.store_url = str(self.store_url)
-                self._dask_load_zarr(str(self.input_dir), self.store_url)
-                return
-            else:
-                print(f"NOT A ZARR")
-                return
-
-
         # Get the 3d slice from the image (Can mock a layer/viewer object in the tests)
         image = self.image_layer.data
         if self.image_layer.multiscale:
-            print(f'Multiscale image selected, using highest resolution level!')
-            image = image[0]
+            print(f'Multiscale image selected, using resolution level {self.multiscale_level}!')
+            try:
+                if self.multiscale_level <= len(image):
+                    image = image[self.multiscale_level]
+            except IndexError:
+                raise Exception(f'Maximum multiscale level is {len(image) - 1}, got multiscale level {self.multiscale_level}')
 
         # Verify that the image doesn't have extraneous channel dimensions
         assert image.ndim in [3, 4], "Only 3D and 4D input images can be handled!"
@@ -184,7 +170,7 @@ class VolumeInferenceWidget:
             case False, False: # For testing stack inference
                 print(f"Now running stack inference in test mode:")
                 stack, axis_name, trackers_dict = self._stack_inference(self.engine, image, self.inference_plane)
-                return stack, axis_name, trackers_dict       
+                return stack, axis_name, trackers_dict
         return
 
 # ---------------- Engine management ----------------
@@ -261,46 +247,14 @@ class VolumeInferenceWidget:
         return
 
 # ---------------- Helper methods ----------------
-
-    def _stack_and_write(self, engine, block, axis):
-        worker = self.stack_inference(engine, block, axis)
-        worker.returned.connect(self.start_postprocess_worker)
-        return
-
-    def _dask_load_zarr(self, inpath, outpath):        
-        z_in = da.from_zarr(f"{inpath}/0", mode="r")
-        # Future: Check if multiscale, if so, use highest resolution/group 0
-        
-        # Write out empty chunk
-        # zarr.open_array(
-        #     outpath,
-        #     mode='w',
-        #     shape=z_in.shape,
-        #     chunks=z_in.chunks,
-        #     dtype=z_in.dtype
-        # )
-
-        da.map_blocks(self._stack_and_write, self.engine, z_in, 'xy')
-
-
-        # da_array = da.array.from_zarr(inpath, component="0")
-
-        # result = da_array.map_blocks(process_chunk, dtype=da_array.dtype)
-        # da.array.to_zarr(result, outpath, overwrite=True)
-
-        return 
-
-
     def _check_option_compatibility(self):
         if quantized_supported == False and self.use_quantized:
             raise RuntimeWarning(
-                "No quantized backend is selected. " \
-                f"torch.backends.quantized.engine = {engine}" \
-                "Using Quantized Model may fail."
+                f" No quantized backend is selected. torch.backends.quantized.engine = {engine} Using Quantized Model may fail."
             )
-    
+
         return
-    
+
     def _new_layers(self, mask, description, instances=None):
         metadata = {}
         if instances is not None:
@@ -320,6 +274,17 @@ class VolumeInferenceWidget:
             elif shape[-1] in [1, 3, 4]:
                 translate = translate[:-1]
                 scale = scale[:-1]
+
+            if self.multiscale_level > 0:
+                if shape[0] in [1,3,4]:
+                    shape_full = np.asarray(self.image_layer.data.shapes[0][1:])
+                    shape_scaled = np.asarray(self.image_layer.data.shapes[self.multiscale_level][1:])
+                if shape[-1] in [1,3,4]:
+                    shape_full = np.asarray(self.image_layer.data.shapes[0][:-1])
+                    shape_scaled = np.asarray(self.image_layer.data.shapes[self.multiscale_level][:-1])
+
+                scale = scale * shape_full / shape_scaled
+
         self.viewer.add_labels(
             mask, name=f'{self.image_layer.name}-{description}',
             visible=True, metadata=metadata, translate=translate,
@@ -385,12 +350,18 @@ class VolumeInferenceWidget:
         return self._orthoplane_inference(engine, volume)
 
     def _stack_inference(self, engine, volume, axis_name):
+    def orthoplane_inference(self, engine, volume):
+        return self._orthoplane_inference(engine, volume)
+
+    def _stack_inference(self, engine, volume, axis_name):
         stack, trackers = engine.infer_on_axis(volume, axis_name)
         trackers_dict = {axis_name: trackers}
         return stack, axis_name, trackers_dict
 
     def _orthoplane_inference(self, engine, volume):
+    def _orthoplane_inference(self, engine, volume):
         trackers_dict = {}
+        axes_dict = {}
         axes_dict = {}
         for axis_name in ['xy', 'xz', 'yz']:
             stack, trackers = engine.infer_on_axis(volume, axis_name)
@@ -411,11 +382,45 @@ def volume_inference_widget():
     logo = abspath(__file__, 'resources/empanada_logo.png')
     model_configs = get_configs()
 
-    @magicgui(
+    def on_init(widget):
+
+        def set_max_multiscale(image_layer: Image):
+            if image_layer.multiscale:
+                widget.multiscale_level.visible = True
+                widget.multiscale_level.max = len(image_layer.data) - 1
+            else:
+                widget.multiscale_level.visible = False
+
+        def toggle_zarr_store_visibility(use_store_dir: bool):
+            zarr_store_props = ['store_dir', 'chunk_size']
+            if use_store_dir:
+                for x in zarr_store_props:
+                    setattr(getattr(widget, x), 'visible', True)
+            else:
+                for x in zarr_store_props:
+                    setattr(getattr(widget, x), 'visible', False)
+                widget.store_dir.set_value('')
+
+        # Default settings
+        if isinstance(widget.image_layer.value, Image):
+            set_max_multiscale(image_layer=widget.image_layer.value)
+        else:
+            widget.multiscale_level.visible = False
+
+        toggle_zarr_store_visibility(use_store_dir=False)
+
+        widget.image_layer.changed.connect(set_max_multiscale)
+        widget.use_store_dir.changed.connect(toggle_zarr_store_visibility)
+
+    @magic_factory(
+        widget_init=on_init,
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
         call_button='Run 3D Inference',
         layout='vertical',
         scrollable=True,
+
+        multiscale_level=dict(widget_type='SpinBox', value=0, min=0, label='Multiscale level',
+                             tooltip='What multiscale level should be segmented.'),
 
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()),
                           value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
@@ -455,7 +460,6 @@ def volume_inference_widget():
                                        # value here was originally '10000' string, may break
         inference_plane=dict(widget_type='ComboBox', choices=['xy', 'xz', 'yz'], value='xy', label='Inference plane',
                              tooltip='Image plane along which to run inference. Overwritten, if using ortho-plane.'),
-
         parameters_ortho_head=dict(widget_type='Label',
                                    label=f'<h3 text-align="center">Ortho-plane Parameters (Optional)</h3>'),
         label_erosion=dict(widget_type='SpinBox', value=0, min=0, max=50, step=1, label='Erode Labels',
@@ -475,20 +479,19 @@ def volume_inference_widget():
                             tooltip='Whether to allow detections into consensus that were picked up by inference in just 1 stack'),
 
         storage_head=dict(widget_type='Label', label=f'<h3 text-align="center">Zarr Storage (optional)</h3>'),
-        store_dir=dict(widget_type='FileEdit', value='no zarr storage', label='Directory', mode='d',
+        use_store_dir=dict(widget_type='CheckBox', text='Use Zarr Storage', value=False,
+                           tooltip='Whether to select local Zarr storage'),
+        store_dir=dict(widget_type='FileEdit', value='', label='Directory', mode='d',
                        tooltip='location to store segmentations on disk'),
         chunk_size=dict(widget_type='LineEdit', value='256', label='Chunk size',
                         tooltip='Chunk size of the zarr array. Integer or comma separated list of 3 integers.'),
         pbar={'visible': False, 'max': 0, 'label': 'Running...'},
     )
-    def widget(
+    def widget_factory(
             viewer: napari.viewer.Viewer,
             label_head,
             image_layer: Image,
-            
-            input_head,
-            input_dir,
-            
+            multiscale_level,
             model_config,
             use_gpu,
             use_quantized,
@@ -519,6 +522,7 @@ def volume_inference_widget():
             allow_one_view,
 
             storage_head,
+            use_store_dir,
             store_dir,
             chunk_size,
 
@@ -526,6 +530,7 @@ def volume_inference_widget():
     ):
         # instantiate the class
         inference_config = VolumeInferenceWidget(viewer = viewer,
+            label_head = label_head,
             image_layer = image_layer,
             model_config = model_config,
             use_gpu = use_gpu,
@@ -542,6 +547,7 @@ def volume_inference_widget():
             min_extent = min_extent,
             maximum_objects_per_class = maximum_objects_per_class,
             inference_plane = inference_plane,
+            multiscale_level=multiscale_level,
             label_erosion = label_erosion,
             label_dilation = label_dilation,
             fill_holes_in_segmentation = fill_holes_in_segmentation,
@@ -549,16 +555,19 @@ def volume_inference_widget():
             return_panoptic = return_panoptic,
             pixel_vote_thr = pixel_vote_thr,
             allow_one_view = allow_one_view,
-            input_dir = input_dir,
+            use_store_dir=use_store_dir,
             store_dir = store_dir,
             chunk_size = chunk_size,
             pbar = pbar
     )
-        
+
         # method that configures & runs inference
         # use_thread=True will output result to napari layer/viewer
         inference_config.config_and_run_inference(use_thread=True)
         pbar.show()
+
+    # instantiate widget
+    widget = widget_factory()
 
     # make the scroll available
     scroll = QScrollArea()

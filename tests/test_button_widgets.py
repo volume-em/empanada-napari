@@ -64,7 +64,7 @@ class TestSliceInference:
     # ---------------- Tests ----------------
     @pytest.mark.parametrize(("test_args", "expected_shape"), gen_slice_sanity_params(), #list(zip(slice_test_args, expect_shape)),
             ids=["tutorial_params", "DropNet", "NucleoNet", "fine_boundaries", "semantic_only", 
-              "fill_holes_in_segmentation", "batch_mode", "use_gpu", "use_quantized", "viewport", 
+              "fill_holes_in_segmentation", "use_quantized", "batch_mode", "use_gpu", "viewport", 
               "confine_to_roi", "output_to_layer"])
     def test_slice_inference_sanity(self, image_2d, test_args, expected_shape):
         viewer = ViewerModel()
@@ -89,6 +89,7 @@ class TestSliceInference:
         assert np.asarray(seg).shape == expected_shape
 
 
+    @pytest.mark.slow
     @pytest.mark.parametrize(("test_args", "expected_labels"), gen_slice_dset_params(), #list(zip(slice_test_args, expect_results)),
             ids=["tutorial_params", "DropNet", "NucleoNet", "MitoNetMini"])
     def test_slice_inference_dataset(self, tutorial_2d_image, test_args, expected_labels):
@@ -173,6 +174,7 @@ class TestVolumeInference:
         assert stack.shape == expected_shape
 
 
+    @pytest.mark.slow
     @pytest.mark.parametrize(("test_args", "expected_labels"), gen_vol_dset_params(), #list(zip(vol_dset_args, expect_results)),
             ids=["MitoNet", "DropNet", "NucleoNet", "MitoNetMini"])
     def test_volume_stack_inference_dataset(self, tutorial_3d_image, test_args, expected_labels):
@@ -218,7 +220,7 @@ class TestVolumeInference:
             assert isinstance(stack, np.ndarray)
             assert stack.shape == expected_shape
 
-
+    @pytest.mark.slow
     @pytest.mark.parametrize(("test_args", "expected_labels"), gen_ortho_dset_params(), #list(zip(vol_dset_args, expect_results)),
             ids=["MitoNet", "DropNet", "NucleoNet", "MitoNetMini"])
     def test_volume_orthoplane_inference_dataset(self, tutorial_3d_image, test_args, expected_labels):   
