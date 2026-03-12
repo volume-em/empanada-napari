@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import time
 import napari
 from napari import Viewer
@@ -18,6 +19,8 @@ from empanada_napari.multigpu import MultiGPUEngine3d
 from empanada_napari.utils import get_configs, abspath
 from empanada.config_loaders import read_yaml
 
+from dask.distributed import Client, progress
+
 quantized_supported = True
 if engine in (None or 'none'):
     quantized_supported = False
@@ -27,7 +30,6 @@ class VolumeInferenceWidget:
             image_layer: Image,
             model_config: str,
             viewer: Viewer = None,
-            label_head: dict = None,
             use_gpu: bool = False,
             use_quantized: bool = False,
             multigpu: bool = False,
@@ -60,7 +62,6 @@ class VolumeInferenceWidget:
             pbar: widgets.ProgressBar = None
     ):
         self.viewer = viewer
-        self.label_head = label_head
         self.image_layer = image_layer
         self.model_config_name = model_config
         self.use_gpu = use_gpu
@@ -88,7 +89,7 @@ class VolumeInferenceWidget:
         self.pixel_vote_thr = pixel_vote_thr
         self.allow_one_view = allow_one_view
 
-        self.input_dir = str(input_dir)
+        self.input_dir = Path(input_dir)
 
         print("!!!!!!!!!!!! INPUT DIR FOR ZARR: ", self.input_dir)
         self.store_dir = str(store_dir)
@@ -122,6 +123,25 @@ class VolumeInferenceWidget:
             self.store_url = os.path.join(self.store_dir, f'{self.image_layer.name}_{self.model_config_name}.zarr')
 
         self.get_engine()
+
+
+        ##### This part needs modifying #####
+        # If there is a Zarr input passed, we call the dask function to read it, and get the image
+        # Initially, just see what happens if we pass the image to the inference functions - is it parallel? Does it work?
+
+        if self.input_dir:
+            # Check the extension is .zarr or .ome.zar
+            if self.input_dir.suffix in ['.zarr', '.ome.zarr']:
+                self.store_url = self.input_dir.parent
+                self.store_url = self.store_url.joinpath(f"1-{self.input_dir.name}")
+                self.store_url.mkdir(exist_ok=True)
+                self.store_url = str(self.store_url)
+                self._dask_load_zarr(str(self.input_dir), self.store_url)
+                return
+            else:
+                print(f"NOT A ZARR")
+                return
+
 
         # Get the 3d slice from the image (Can mock a layer/viewer object in the tests)
         image = self.image_layer.data
@@ -241,6 +261,36 @@ class VolumeInferenceWidget:
         return
 
 # ---------------- Helper methods ----------------
+
+    def _stack_and_write(self, engine, block, axis):
+        worker = self.stack_inference(engine, block, axis)
+        worker.returned.connect(self.start_postprocess_worker)
+        return
+
+    def _dask_load_zarr(self, inpath, outpath):        
+        z_in = da.from_zarr(f"{inpath}/0", mode="r")
+        # Future: Check if multiscale, if so, use highest resolution/group 0
+        
+        # Write out empty chunk
+        # zarr.open_array(
+        #     outpath,
+        #     mode='w',
+        #     shape=z_in.shape,
+        #     chunks=z_in.chunks,
+        #     dtype=z_in.dtype
+        # )
+
+        da.map_blocks(self._stack_and_write, self.engine, z_in, 'xy')
+
+
+        # da_array = da.array.from_zarr(inpath, component="0")
+
+        # result = da_array.map_blocks(process_chunk, dtype=da_array.dtype)
+        # da.array.to_zarr(result, outpath, overwrite=True)
+
+        return 
+
+
     def _check_option_compatibility(self):
         if quantized_supported == False and self.use_quantized:
             raise RuntimeWarning(
@@ -476,7 +526,6 @@ def volume_inference_widget():
     ):
         # instantiate the class
         inference_config = VolumeInferenceWidget(viewer = viewer,
-            label_head = label_head,
             image_layer = image_layer,
             model_config = model_config,
             use_gpu = use_gpu,

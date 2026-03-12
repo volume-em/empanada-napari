@@ -7,6 +7,7 @@ import itertools
 
 import numpy as np
 import numpy.typing as npt
+import dask.array as da
 
 from joblib import delayed
 from multiprocessing import Pool
@@ -182,3 +183,69 @@ def zarr_fill_instances(array, instances, processes=4):
     # return because it's done inplace
     with Pool(processes) as pool:
         pool.map(fill_zarr_mp, arg_iter)
+
+
+
+#### Helper Functions I Added ####
+
+### 1: Generate Array Indices of each chunk
+# Input is the dask array that napari layer uses/converts to when opening a .zarr file
+
+def all_chunk_indices(array: da.Array) -> Generator[tuple[slice, ...], None, None]:
+    """
+    Generate indices that represent all chunks in a Zarr (Dask) Array.
+    """
+    ndim = len(array.shape)
+    indices = [range(0, array.shape[i], array.chunks[i]) for i in range(ndim)]
+    chunk_corners = itertools.product(*indices)
+    yield from (
+        tuple(
+            slice(corner[i], min(corner[i] + array.chunks[i], array.shape[i]))
+            for i in range(ndim)
+        )
+        for corner in chunk_corners
+    )
+
+
+### 2: Copy the chunk of data from input arr to output arr & apply func to it
+# Callable[[int], str] e.g. = func that takes a single int param and returns a str
+def apply_to_chunk(
+    f: Callable[[npt.NDArray[Any]], npt.NDArray[Any]],
+    input_array: da.Array,
+    output_array: zarr.Array,
+    chunk_index: slice,
+) -> None:
+    
+    # Callable in this example takes an NDArray and returns an NDArray
+    # We want to convert the da array to a Zarr array (or np?)
+    """
+    Copy a specific chunk of data from one array to another, applying a function in between.
+
+    Parameters
+    ----------
+    f :
+        Function to apply to slice of data.
+    input_array :
+        Array to read from.
+    output_array :
+        Array to write to.
+    chunk_index :
+        Array slice of data to process.
+    """
+    print(f"Reading index {chunk_index}...")
+    chunk = input_array[chunk_index]
+    chunk = f(chunk)
+    print(f"Writing index {chunk_index}...")
+    output_array[chunk_index] = chunk
+
+    # orthoplane takes an engine and an array
+    # Stack takes engine, array and inference plane (str)
+    # Callables cant have varying args
+    # Solution: Make new func that checks what type of inference to use -
+        # inferring(img_array):
+            # if x, orthoplane(self.engine, vol)
+            # if y, slice(self.engine, vol, self.axis)
+    # should return the output chunk-modified
+    # when all are complete: consensus is computed on the z slices? (ortho)
+    # Can try to paralellise that, and write out the chunks to new/outzarr
+    # Finally, load in outzarr as napari layer (for consensus, and 3 axes) to view
