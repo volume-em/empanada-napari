@@ -19,7 +19,6 @@ def finetuning_widget():
     from empanada_napari.utils import abspath, get_configs, add_new_model
     from empanada.config_loaders import load_config
 
-    from torch.cuda import device_count
 
     main_config = abspath(__file__, 'training/finetune_config.yaml')
     logo = abspath(__file__, 'resources/empanada_logo.png')

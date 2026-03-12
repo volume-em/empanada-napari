@@ -22,7 +22,6 @@ def training_widget():
     from empanada.config_loaders import load_config
     from empanada.models import quantization as quant_models
 
-    from torch.cuda import device_count
 
     main_config = abspath(__file__, 'training/train_config.yaml')
     cem_weights = "https://zenodo.org/record/6453160/files/cem1.5m_swav_resnet50_200ep_balanced.pth.tar?download=1"
