@@ -105,6 +105,23 @@ def load_model_to_device(fpath_or_url, device):
 
     return model
 
+def get_device(use_gpu=True):
+    """Return the best available device: cuda > mps > cpu."""
+    if use_gpu:
+        if torch.cuda.is_available():
+            return torch.device('cuda:0')
+        if torch.backends.mps.is_available():
+            return torch.device('mps')
+    return torch.device('cpu')
+
+def has_gpu():
+    """True if any GPU (CUDA or MPS) is available."""
+    return torch.cuda.is_available() or torch.backends.mps.is_available()
+
+def gpu_default():
+    """True only for CUDA; MPS defaults to CPU since it is often slower than CPU on Mac."""
+    return torch.cuda.is_available()
+
 def valid_url_or_file(fp):
     valid = False
     try:

@@ -8,7 +8,7 @@ import torch.optim.lr_scheduler as lr_scheduler
 import torch.backends.cudnn as cudnn
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -65,7 +65,8 @@ def main(config):
     main_worker(config)
 
 def main_worker(config):
-    config['device'] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    from empanada_napari.utils import get_device
+    config['device'] = get_device()
 
     if str(config['device']) == 'cpu':
         print(f"Using CPU for training.")
@@ -114,7 +115,8 @@ def main_worker(config):
 
     model = model.to(config['device'])
 
-    cudnn.benchmark = True
+    if torch.cuda.is_available():
+        cudnn.benchmark = True
 
     # set the training image augmentations
     config['aug_string'] = []
@@ -188,7 +190,7 @@ def main_worker(config):
             print(f'Steps per epoch adjusted from {n_steps} to {len(train_loader)}')
 
     scheduler = lr_scheduler.__dict__[schedule_name](optimizer, **schedule_params)
-    scaler = GradScaler() if config['TRAIN']['amp'] else None
+    scaler = GradScaler('cuda') if (config['TRAIN']['amp'] and torch.cuda.is_available()) else None
 
     config['start_epoch'] = 0
     if 'epochs' in config['TRAIN']['schedule_params']:
@@ -322,7 +324,7 @@ def train(
 
         # compute output
         if scaler is not None:
-            with autocast():
+            with autocast(device_type=config['device'].type):
                 output = model(images)
                 loss, aux_loss = criterion(output, target)  # output and target are both dicts
 
