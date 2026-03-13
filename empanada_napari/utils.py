@@ -118,6 +118,10 @@ def has_gpu():
     """True if any GPU (CUDA or MPS) is available."""
     return torch.cuda.is_available() or torch.backends.mps.is_available()
 
+def gpu_default():
+    """True only for CUDA; MPS defaults to CPU since it is often slower than CPU on Mac."""
+    return torch.cuda.is_available()
+
 def valid_url_or_file(fp):
     valid = False
     try:

@@ -6,7 +6,7 @@ from skimage.draw import polygon
 
 from empanada.config_loaders import read_yaml
 from empanada_napari.inference import Engine2d
-from empanada_napari.utils import get_configs, abspath, has_gpu
+from empanada_napari.utils import get_configs, abspath, gpu_default
 
 from napari import Viewer
 from napari.layers import Image, Labels, Shapes
@@ -486,9 +486,9 @@ def slice_inference_widget():
                              tooltip='If checked, the segmentation is output to the selected output layer.'),
     )
 
-    gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=has_gpu(),
+    gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=gpu_default(),
                                  tooltip='If checked, run on GPU 0')
-    gui_params['use_quantized'] = dict(widget_type='CheckBox', text='Use quantized model', value=not has_gpu() and quantized_supported,
+    gui_params['use_quantized'] = dict(widget_type='CheckBox', text='Use quantized model', value=not gpu_default() and quantized_supported,
                                        tooltip='If checked, run on GPU 0')
     # Add the new option to the gui_params dictionary
     gui_params['confine_to_roi'] = dict(widget_type='CheckBox', text='Confine to ROI', value=False,

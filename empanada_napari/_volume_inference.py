@@ -348,7 +348,7 @@ class VolumeInferenceWidget:
 
 def volume_inference_widget():
     # Import when users activate plugin
-    from empanada_napari.utils import get_configs, abspath, has_gpu
+    from empanada_napari.utils import get_configs, abspath, gpu_default
 
     logo = abspath(__file__, 'resources/empanada_logo.png')
     model_configs = get_configs()
@@ -361,9 +361,9 @@ def volume_inference_widget():
 
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()),
                           value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
-        use_gpu=dict(widget_type='CheckBox', text='Use GPU', value=has_gpu(),
+        use_gpu=dict(widget_type='CheckBox', text='Use GPU', value=gpu_default(),
                      tooltip='If checked, run on GPU 0'),
-        use_quantized=dict(widget_type='CheckBox', text='Use quantized model', value=not has_gpu() and quantized_supported,
+        use_quantized=dict(widget_type='CheckBox', text='Use quantized model', value=not gpu_default() and quantized_supported,
                            tooltip='If checked, use the quantized model for faster CPU inference.'),
         multigpu=dict(widget_type='CheckBox', text='Multi GPU', value=False,
                       tooltip='If checked, run on all available GPUs'),
