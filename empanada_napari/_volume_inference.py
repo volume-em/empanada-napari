@@ -150,6 +150,11 @@ class VolumeInferenceWidget:
 
             print(f'Got 4D image of shape {shape}, extracted single channel of size {image.shape}')
 
+
+        ### Debugging: Process one "chunk" of shape 64,64,64 of a regular tiff
+        image = image[:64, :64, :64]
+        print("FOR DEBUGGING PURPOSES ONLY:", image.shape, image.dtype)
+
         match (self.orthoplane, use_thread):
         # if use_thread is False, use the non-threaded versions of orthoplane + stack
             case True, True:
@@ -349,7 +354,6 @@ class VolumeInferenceWidget:
     def orthoplane_inference(self, engine, volume):
         return self._orthoplane_inference(engine, volume)
 
-    def _stack_inference(self, engine, volume, axis_name):
     def orthoplane_inference(self, engine, volume):
         return self._orthoplane_inference(engine, volume)
 
@@ -358,7 +362,6 @@ class VolumeInferenceWidget:
         trackers_dict = {axis_name: trackers}
         return stack, axis_name, trackers_dict
 
-    def _orthoplane_inference(self, engine, volume):
     def _orthoplane_inference(self, engine, volume):
         trackers_dict = {}
         axes_dict = {}
@@ -425,9 +428,9 @@ def volume_inference_widget():
         model_config=dict(widget_type='ComboBox', label='model', choices=list(model_configs.keys()),
                           value=list(model_configs.keys())[0], tooltip='Model to use for inference'),
 
-        input_head=dict(widget_type='Label', label=f'<h3 text-align="center">Zarr File Input (optional)</h3>'),
-        input_dir=dict(widget_type='FileEdit', value=None, label='Directory', mode='d',
-                       tooltip='location of zarr files'),
+        # input_head=dict(widget_type='Label', label=f'<h3 text-align="center">Zarr File Input (optional)</h3>'),
+        # input_dir=dict(widget_type='FileEdit', value=None, label='Directory', mode='d',
+        #                tooltip='location of zarr files'),
 
         use_gpu=dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1,
                      tooltip='If checked, run on GPU 0'),
