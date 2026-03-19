@@ -59,8 +59,8 @@ def export_batch_segs():
         image = image_layer.data
         mask = labels_layer.data
 
-        assert image.shape[0] == image.shape[0], \
-        f"Image and labels layer must have the same number of images, got {image.shape} and {image.shape}"
+        assert image.shape[0] == mask.shape[0], \
+        f"Image and labels layer must have the same number of images, got {image.shape} and {mask.shape}"
 
         if image.ndim == 3:
             if isinstance(image, da.Array):
