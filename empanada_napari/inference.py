@@ -489,6 +489,8 @@ class Engine3d:
         return stack
 
     def infer_on_axis(self, volume, axis_name):
+        print("!!!! VOLDTYPE", type(volume), volume[:5])
+        
         axis = self.axes[axis_name]
         # create the dataloader
         dataset = VolumeDataset(volume, axis, self.preprocessor, scale=self.inference_scale)
@@ -497,6 +499,8 @@ class Engine3d:
             drop_last=False, num_workers=0
         )
 
+        print("DSETLOADER: ", type(dataset), type(dataloader))
+
         # create necessary matchers and trackers
         trackers = self.create_trackers(volume.shape, axis_name)
         matchers = create_matchers(
@@ -504,6 +508,9 @@ class Engine3d:
             self.merge_iou_thr, self.merge_ioa_thr
         )
         stack = self.create_panoptic_stack(axis_name, volume.shape)
+
+        print("PANOPTICSAVE:", self.save_panoptic)
+        print("FIRST STACK:", type(stack))
 
         if platform.system() == "Darwin":
             try:

@@ -210,6 +210,8 @@ def all_chunk_indices(array: da.Array) -> Generator[tuple[slice, ...], None, Non
     )
 
 
+#### In code - convert the dask array into a np array (involves loading it into memory)
+
 ### 2: Copy the chunk of data from input arr to output arr & apply func to it
 # Callable[[int], str] e.g. = func that takes a single int param and returns a str
 def apply_to_chunk(
@@ -220,7 +222,7 @@ def apply_to_chunk(
 ) -> None:
     
     # Callable in this example takes an NDArray and returns an NDArray
-    # We want to convert the da array to a Zarr array (or np?)
+    # We want to convert the da array to a np array
     """
     Copy a specific chunk of data from one array to another, applying a function in between.
 
@@ -252,3 +254,35 @@ def apply_to_chunk(
     # when all are complete: consensus is computed on the z slices? (ortho)
     # Can try to paralellise that, and write out the chunks to new/outzarr
     # Finally, load in outzarr as napari layer (for consensus, and 3 axes) to view
+
+
+#### 3: Write out np.arr to (ome.zarr) chunk
+##### Serial Processing:
+# We have the dask array, iterate over chunks in the array
+# def _iter_zarr_chunks(f: Callable[[npt.NDArray[Any]], npt.NDArray[Any]], array: da.Array) -> None:
+#     mapped_data = da.map_blocks(f, array)
+#     return
+
+def _write_empty_chunk(array):
+    dest_path = '/home/efv97572/empanada_tem/zarr.out'
+    z = zarr.open(
+        dest_path,
+        mode="w",
+        shape=array.shape,
+        chunks=array.chunks,
+        dtype="uint8",
+        zarr_format=3
+        )
+    print(f"Initial empty array written at: {dest_path}")
+    return z
+
+    # ome.zar json tells about multiscale resolutions
+
+
+def chunk_slices(chunks):
+    bounds = []
+    for c in chunks:
+        starts = np.cumsum((0,) + c[:-1])
+        bounds.append([slice(s, s + size) for s, size in zip(starts, c)])
+    return bounds
+
