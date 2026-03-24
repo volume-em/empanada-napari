@@ -15,6 +15,5 @@ numba>=0.58.1
 imagecodecs
 openpyxl
 imagehash
-mlflow
 simpleitk
 tqdm
