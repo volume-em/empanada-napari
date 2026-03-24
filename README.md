@@ -47,12 +47,12 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 If you've previously installed and used conda, it's recommended (but optional) to create a new virtual 
 environment in order to avoid dependency conflicts. 
 
-empanada-napari works with python=3.9 or lower
+empanada-napari works with python=3.10 to 3.13, and napari<=0.6.6
 
 It's recommended to have installed napari through [conda](https://docs.conda.io/en/latest/miniconda.html). Then to install this plugin:
 
 ```shell
-pip install empanada-napari==1.2
+pip install empanada-napari
 ```
 
 Launch napari:
@@ -76,7 +76,7 @@ pip uninstall empanada-napari
 Then install the newest version:
 
 ```shell
-pip install empanada-napari==1.2
+pip install empanada-napari
 ```
 
 
@@ -112,7 +112,7 @@ Then [install torch >= 1.10 using conda for your system](https://pytorch.org/get
 This command should work:
 
 ```shell
-conda install pytorch cudatoolkit=11.3 -c pytorch
+conda install pytorch cudatoolkit -c pytorch
 ```
 
 ## Citing this work
