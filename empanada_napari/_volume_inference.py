@@ -91,12 +91,29 @@ class VolumeInferenceWidget:
         self.last_config = None
         self.engine = None
 
-        if type(chunk_size) == int: chunk_size = [chunk_size] 
-        if len(chunk_size) == 1:
-            self.chunk_size = tuple(int(chunk_size[0]) for _ in range(3))
+        # 1. Did a GUI user pass a string?
+        if isinstance(chunk_size, str):
+            
+            # Did they pass a comma-separated list like "64, 256, 256"?
+            if ',' in chunk_size:
+                # Split it, strip spaces, and cast each to an int
+                self.chunk_size = tuple(int(x.strip()) for x in chunk_size.split(','))
+                assert len(self.chunk_size) == 3, f"Must provide exactly 3 integers, got {len(self.chunk_size)}"
+                
+            # Or did they just pass a single number like "256"? (Your logic!)
+            else:
+                assert chunk_size.isdigit(), f"Chunk size must be numbers, got {chunk_size}"
+                val = int(chunk_size)
+                self.chunk_size = (val, val, val)
+
+        # 2. Did a Scripter pass a single integer directly?
+        elif isinstance(chunk_size, int):
+            self.chunk_size = (chunk_size, chunk_size, chunk_size)
+
+        # 3. Did a Scripter pass an actual list like [64, 256, 256]?
         else:
-            assert len(chunk_size) == 3, f"Chunk size must be 1 or 3 integers, got {chunk_size}"
-            self.chunk_size = tuple(int(s) for s in chunk_size)
+            assert len(chunk_size) == 3, f"List must have 3 integers, got {len(chunk_size)}"
+            self.chunk_size = tuple(int(x) for x in chunk_size)
         
         self._check_option_compatibility()
         self.pbar = pbar
