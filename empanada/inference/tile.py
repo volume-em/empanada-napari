@@ -1,6 +1,6 @@
 import numpy as np
 from cztile.fixed_total_area_strategy_2d import AlmostEqualBorderFixedTotalAreaStrategy2D
-from cztile.tiling_strategy import Region2D as czrect
+from cztile.tiling_strategy import Region2D as czrect, TileInput
 from empanada.array_utils import rle_voting, merge_rles
 
 __all__ = ['Tiler']
@@ -86,8 +86,8 @@ class Tiler:
         tw = min(tw, image_shape[1])
 
         tiler = AlmostEqualBorderFixedTotalAreaStrategy2D(
-            total_tile_width=tw, total_tile_height=th, 
-            min_border_width=overlap_width
+            width=TileInput(total_tile_length=tw, min_border_length=overlap_width),
+            height=TileInput(total_tile_length=th, min_border_length=overlap_width)
         )
 
         h, w = image_shape
@@ -96,7 +96,7 @@ class Tiler:
         # define the y and x ranges of each tile
         yranges = []
         xranges = []
-        for tile in tiler.tile_rectangle(rectangle):
+        for tile in tiler.calculate_2d_tiles(rectangle):
             y, x = tile.roi.y, tile.roi.x
             h, w = tile.roi.h, tile.roi.w
 

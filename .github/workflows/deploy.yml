@@ -1,18 +1,16 @@
-name: deploy 
+name: deploy
 
-on: 
+on:
   push:
-    branches: [ main ]
-    tags: [ "v*" ]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [ main ] 
-
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: contains(github.ref, 'tags')
 
     steps:
       - uses: actions/checkout@v2
@@ -20,14 +18,23 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -U setuptools setuptools_scm wheel twine
+          pip install -U setuptools setuptools_scm wheel
 
-      - name: Build and Upload to PyPi
+      # PRs and non-tag pushes: verify the package builds (satisfies required check).
+      - name: Validate package build
+        if: "!startsWith(github.ref, 'refs/tags/')"
         run: |
-          git tag
+          python setup.py sdist bdist_wheel
+          echo "Package build succeeded"
+
+      # Tag pushes only: publish to PyPI.
+      - name: Install twine and upload to PyPI
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          pip install twine
           python setup.py sdist bdist_wheel
           python -m twine upload dist/*
         env:

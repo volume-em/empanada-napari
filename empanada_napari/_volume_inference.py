@@ -91,9 +91,19 @@ class VolumeInferenceWidget:
         self.last_config = None
         self.engine = None
 
-        if type(chunk_size) == int: chunk_size = [chunk_size] 
+        # chunk_size arrives as a raw string from magicgui LineEdit (e.g. "256"
+        # or "64, 256, 256"). Parse to a list of ints before further processing.
+        if isinstance(chunk_size, str):
+            parts = [p.strip() for p in chunk_size.split(',')]
+            assert all(p.isdigit() for p in parts), (
+                f"chunk_size must be an integer or comma-separated integers, got '{chunk_size}'"
+            )
+            chunk_size = [int(p) for p in parts]
+        elif isinstance(chunk_size, int):
+            chunk_size = [chunk_size]
+
         if len(chunk_size) == 1:
-            self.chunk_size = tuple(int(chunk_size[0]) for _ in range(3))
+            self.chunk_size = (chunk_size[0], chunk_size[0], chunk_size[0])
         else:
             assert len(chunk_size) == 3, f"Chunk size must be 1 or 3 integers, got {chunk_size}"
             self.chunk_size = tuple(int(s) for s in chunk_size)

@@ -194,8 +194,11 @@ class Preprocessor:
     def __call__(self, image=None):
         assert image is not None
         if np.issubdtype(image.dtype, np.floating):
-            raise Exception('Input image cannot be float type!')
+            max_value = 255.0
+            if image.max() <= 1.0:
+                image = image * max_value
+        else:
+            max_value = np.iinfo(image.dtype).max
 
-        max_value = np.iinfo(image.dtype).max
         image = normalize(image, self.mean, self.std, max_pixel_value=max_value)
         return {'image': to_tensor(image)}

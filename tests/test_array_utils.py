@@ -117,9 +117,10 @@ def test_rle_voting(ranges, expected):
 @pytest.mark.parametrize(['ranges', 'expected'],
     [([(0,10), (6, 10)], [[0, 10]]),
      ([(0,10), (11, 20)], [[0, 10], [11, 20]]),
-     ([(0,10), (10, 20)], [[0, 20]])],
+     ([(0,10), (10, 20)], [[0, 20]]),
+     ([(0, 10)], [[0, 10]])],
     ids=["overlapping_ranges", "non_overlapping_ranges",
-         "border_ranges"])
+         "border_ranges", "single_range"])
 def test__join_ranges(ranges, expected):
     """
     Test `_join_ranges` function.

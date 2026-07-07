@@ -667,6 +667,9 @@ def _join_ranges(ranges: np.ndarray):
         joined: np.ndarray of (m, 2) non-overlapping ranges.
 
     """
+    if ranges.shape[0] <= 1:
+        return ranges
+
     joined = np.empty(shape=(0,2), dtype=np.int64)
     running_range = np.empty(shape=0, dtype=np.int64)
     # Running_range can't be None as this prevents 
@@ -686,7 +689,7 @@ def _join_ranges(ranges: np.ndarray):
     if running_range.shape != (0,):
         joined = np.vstack((joined, running_range[None, :]))
     else:
-        joined = np.vstack((joined, range2[None, :]))
+        joined = np.vstack((joined, ranges[-1][None, :]))
 
     return joined
 
