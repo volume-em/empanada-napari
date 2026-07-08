@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import torch
 
 from empanada_napari.utils import Preprocessor
 
@@ -18,5 +19,5 @@ def test_preprocessor_accepts_image_dtypes(image):
     result = preprocessor(image=image)
 
     assert 'image' in result
-    assert result['image'].dtype == np.float32
+    assert result['image'].dtype == torch.float32
     assert result['image'].shape[0] == 1
