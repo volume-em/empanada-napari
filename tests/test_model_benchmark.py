@@ -63,6 +63,7 @@ class TestVolumeInference:
                                         return_panoptic=True,
                                         use_gpu=True,
                                         inference_plane=inference_plane,
+                                        orthoplane=False,
                                         **test_args)
         benchmark(inference_config.config_and_run_inference, use_thread=False)
 

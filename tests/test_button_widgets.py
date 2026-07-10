@@ -167,6 +167,7 @@ class TestVolumeInference:
                                         image_layer=image_layer,
                                         return_panoptic=True,
                                         inference_plane=inference_plane,
+                                        orthoplane=False,
                                         **test_args)
         
         stack, axis_name, trackers_dict = inference_config.config_and_run_inference(use_thread=False)
@@ -186,6 +187,7 @@ class TestVolumeInference:
                                         image_layer=image_layer,
                                         return_panoptic=True,
                                         use_gpu=True,
+                                        orthoplane=False,
                                         # inference_plane=inference_plane,
                                         **test_args)
         
