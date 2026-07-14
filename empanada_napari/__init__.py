@@ -3,6 +3,14 @@ try:
 except ImportError:
     __version__ = "unknown"
 
+import os
+# Must be set before PyTorch initialises the MPS backend (i.e. before
+# `import torch`), otherwise the cached value is already None and ops
+# without MPS kernels (e.g. torch.mode) will raise instead of falling
+# back to CPU.
+# This enables fallback to CPU when MPS kernels are missing
+os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+
 import torch
 if torch.backends.quantized.engine in (None or 'none'):
     if 'qnnpack' in torch.backends.quantized.supported_engines:

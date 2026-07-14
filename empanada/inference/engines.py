@@ -293,6 +293,11 @@ class PanopticDeepLabRenderEngine(PanopticDeepLabEngine):
 
     @torch.no_grad()
     def postprocess(self, sem, instance_cells):
+        # MPS lacks kernels for some postprocessing ops (e.g. torch.mode);
+        # running them on CPU is faster than the implicit fallback round-trips.
+        if sem.device.type == 'mps':
+            sem = sem.cpu()
+            instance_cells = instance_cells.cpu()
         # harden the segmentation
         sem = self._harden_seg(sem)[0]
         return self.get_panoptic_seg(sem, instance_cells)
