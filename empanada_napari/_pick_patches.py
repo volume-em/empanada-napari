@@ -7,6 +7,7 @@ import dask.array as da
 from magicgui import magicgui
 from napari_plugin_engine import napari_hook_implementation
 from empanada.array_utils import take
+from empanada_napari.utils import enable_layer_rename_refresh
 
 
 def pick_patches():
@@ -488,6 +489,7 @@ def pick_patches():
         if points_layer is not None:
             points_layer.data = points_layer.data[num_patches:]
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 
@@ -577,6 +579,7 @@ def store_dataset():
 
         print('Finished saving.')
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 

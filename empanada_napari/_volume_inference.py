@@ -360,7 +360,7 @@ class VolumeInferenceWidget:
 def volume_inference_widget():
     # Import when users activate plugin
     from torch.cuda import device_count
-    from empanada_napari.utils import get_configs, abspath
+    from empanada_napari.utils import get_configs, abspath, enable_layer_rename_refresh
 
     logo = abspath(__file__, 'resources/empanada_logo.png')
     model_configs = get_configs()
@@ -510,6 +510,7 @@ def volume_inference_widget():
     scroll.setWidget(widget._widget._qwidget)
     widget._widget._qwidget = scroll
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 

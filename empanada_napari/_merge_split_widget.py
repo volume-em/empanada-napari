@@ -1,6 +1,7 @@
 from napari_plugin_engine import napari_hook_implementation
 from magicgui import magicgui
 from empanada.array_utils import crop_and_binarize, take, put
+from empanada_napari.utils import enable_layer_rename_refresh
 from skimage.measure import regionprops
 from scipy import ndimage as ndi
 from skimage.segmentation import watershed
@@ -206,6 +207,7 @@ def morph_labels():
         # else:
         #     points_layer.data = []
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 
@@ -277,6 +279,7 @@ def delete_labels():
 
         print(f'Removed labels {label_ids}')
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 def merge_labels():
@@ -417,6 +420,7 @@ def merge_labels():
 
         print(f'Merged labels {label_ids} to {new_label_id}')
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 def split_labels():
@@ -632,6 +636,7 @@ def split_labels():
         labels_layer.data = labels
         points_layer.data = []
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 def jump_to_label():
@@ -677,6 +682,7 @@ def jump_to_label():
         viewer.dims.current_step = tuple(new_step)
         labels_layer.selected_label = label_id
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 def find_next_available_label():
@@ -760,6 +766,7 @@ def find_next_available_label():
 
         labels_layer.selected_label = next_label        
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 @napari_hook_implementation(specname='napari_experimental_provide_dock_widget')

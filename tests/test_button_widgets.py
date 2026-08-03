@@ -6,10 +6,13 @@ import pytest
 import numpy as np
 from tifffile import imread
 import tifffile
+import napari.viewer
 from napari.components import ViewerModel
+from empanada.array_utils import take
 from empanada_napari._slice_inference import SliceInferenceWidget
 from empanada_napari._volume_inference import VolumeInferenceWidget
-from empanada_napari.utils import get_configs
+from empanada_napari._merge_split_widget import merge_labels
+from empanada_napari.utils import get_configs, enable_layer_rename_refresh
 
 from .conftest import MODEL_NAMES, gen_slice_sanity_params, gen_slice_dset_params, \
                 gen_vol_sanity_params, gen_vol_dset_params, gen_ortho_dset_params
@@ -87,6 +90,53 @@ class TestSliceInference:
 
         assert isinstance(seg, np.ndarray)
         assert np.asarray(seg).shape == expected_shape
+
+    def test_roi_slice_from_labels_layer(self, image_2d):
+        """Confine-to-ROI helpers should crop/mask from a Labels layer."""
+        viewer = ViewerModel()
+        image_layer = viewer.add_image(image_2d)
+        labels = np.zeros(image_2d.shape, dtype=np.int32)
+        labels[10:25, 15:40] = 1
+        labels[50:60, 50:55] = 2
+        labels_layer = viewer.add_labels(labels)
+
+        widget = SliceInferenceWidget(
+            viewer=viewer,
+            image_layer=image_layer,
+            model_config=MODEL_NAMES['MitoNet_mini'],
+            confine_to_roi=True,
+            roi_layer=labels_layer,
+        )
+
+        resolved = widget._resolve_roi_layer()
+        assert resolved is labels_layer
+
+        roi, min_y, min_x, max_y, max_x, mask = widget._get_roi_slice(image_layer, labels_layer)
+        assert (min_y, min_x, max_y, max_x) == (10, 15, 60, 55)
+        assert roi.shape == (50, 40)
+        assert mask.shape == roi.shape
+        # crop origin (10, 15) is inside label 1
+        assert mask[0, 0]
+        # image coordinate (30, 50) is between the two cells
+        assert not mask[20, 35]
+
+    def test_roi_prefers_shapes_over_labels(self, image_2d):
+        viewer = ViewerModel()
+        image_layer = viewer.add_image(image_2d)
+        labels = np.zeros(image_2d.shape, dtype=np.int32)
+        labels[10:25, 15:40] = 1
+        labels_layer = viewer.add_labels(labels)
+        triangle = np.array([[11, 13], [30, 6], [30, 20]])
+        shapes_layer = viewer.add_shapes(triangle, shape_type="polygon", edge_width=5)
+
+        widget = SliceInferenceWidget(
+            viewer=viewer,
+            image_layer=image_layer,
+            model_config=MODEL_NAMES['MitoNet_mini'],
+            confine_to_roi=True,
+            roi_layer=labels_layer,
+        )
+        assert widget._resolve_roi_layer() is shapes_layer
 
 
     @pytest.mark.slow
@@ -247,3 +297,138 @@ class TestVolumeInference:
                 lb = expected * (1-tolerance)
                 ub = expected * (1+tolerance)
                 assert lb <= count <= ub
+
+
+class _SpyEngine:
+    """Fake inference engine that records every 2D array it is asked to segment."""
+    def __init__(self):
+        self.calls = []
+
+    def infer(self, image):
+        image = np.asarray(image)
+        self.calls.append(image.copy())
+        return (image > 0).astype(np.int32)
+
+
+class TestBatchInferenceOrientation:
+    """Regression tests for 2D batch inference on non-default (xz/yz) viewer orientations."""
+
+    @pytest.fixture
+    def volume(self):
+        rng = np.random.default_rng(0)
+        return rng.integers(0, 255, size=(6, 4, 8), dtype=np.uint8)
+
+    @pytest.mark.parametrize(("order", "axis"), [
+        ((0, 1, 2), 0),  # xy: iterate over the first (z) axis
+        ((1, 0, 2), 1),  # xz: iterate over the second (y) axis
+        ((2, 1, 0), 2),  # yz: iterate over the third (x) axis
+    ], ids=["xy", "xz", "yz"])
+    def test_run_model_batch_slices_along_viewer_axis(self, volume, order, axis):
+        viewer = ViewerModel()
+        image_layer = viewer.add_image(volume)
+        viewer.dims.order = order
+
+        widget = SliceInferenceWidget(
+            viewer=viewer,
+            image_layer=image_layer,
+            model_config=MODEL_NAMES['MitoNet_mini'],
+            batch_mode=True,
+        )
+
+        spy = _SpyEngine()
+        stacked = widget._run_model_batch(spy, volume, fill_holes=False)
+
+        # output must match the input volume's shape/orientation
+        assert stacked.shape == volume.shape
+
+        # inference must have been run once per slice along the *viewed* axis,
+        # not always along raw array axis 0
+        assert len(spy.calls) == volume.shape[axis]
+        for i, recorded_slice in enumerate(spy.calls):
+            expected_slice = take(volume, i, axis)
+            assert np.array_equal(recorded_slice, expected_slice), \
+                f"Batch inference used the wrong slice at index {i} for viewer order {order}"
+
+    def test_batch_mode_nonthreaded_3d_end_to_end(self, volume):
+        """config_and_run_inference should not crash and should respect orientation
+        for a 3D batch-mode run (regression for the ndim==3 tuple-unpacking bug)."""
+        viewer = ViewerModel()
+        image_layer = viewer.add_image(volume)
+        viewer.dims.order = (1, 0, 2)  # simulate viewing the xz plane
+
+        widget = SliceInferenceWidget(
+            viewer=viewer,
+            image_layer=image_layer,
+            model_config=MODEL_NAMES['MitoNet_mini'],
+            batch_mode=True,
+        )
+
+        spy = _SpyEngine()
+        widget.engine = spy
+        widget.get_engine = lambda: None  # skip loading a real model
+
+        seg, axis, plane, y, x = widget.config_and_run_inference(use_thread=False)
+
+        assert seg.shape == volume.shape
+        assert len(spy.calls) == volume.shape[1]
+
+
+class TestLayerRenameRefresh:
+    """Regression tests for layer-rename not being reflected in plugin dropdowns."""
+
+    def test_enable_layer_rename_refresh_updates_combobox_choice(self):
+        from magicgui import magicgui
+        from napari.layers import Labels
+
+        viewer = ViewerModel()
+        labels_layer = viewer.add_labels(np.zeros((5, 5), dtype=int), name='orig_name')
+
+        def get_labels_layers(gui):
+            return [l for l in viewer.layers if isinstance(l, Labels)]
+
+        @magicgui(labels_layer=dict(widget_type='ComboBox', choices=get_labels_layers))
+        def widget(labels_layer):
+            pass
+
+        enable_layer_rename_refresh(widget, viewer=viewer)
+
+        assert widget.labels_layer.current_choice == 'orig_name'
+        labels_layer.name = 'renamed_layer'
+        assert widget.labels_layer.current_choice == 'renamed_layer'
+
+    def test_merge_labels_dropdown_refreshes_on_rename(self, monkeypatch):
+        """Merge Labels (and other widgets using enable_layer_rename_refresh) should
+        reflect a layer rename immediately, without closing/reopening the widget."""
+        viewer = ViewerModel()
+        labels_layer = viewer.add_labels(np.zeros((5, 5), dtype=int), name='orig_name')
+
+        # widgets resolve their viewer via napari's current_viewer() fallback
+        # when not docked in a real Qt window; simulate that here.
+        monkeypatch.setattr(napari.viewer, 'current_viewer', lambda: viewer)
+
+        widget = merge_labels()
+        assert widget.labels_layer.current_choice == 'orig_name'
+
+        labels_layer.name = 'renamed_layer'
+        assert widget.labels_layer.current_choice == 'renamed_layer'
+
+    def test_enable_layer_rename_refresh_tracks_new_layers(self):
+        from magicgui import magicgui
+        from napari.layers import Labels
+
+        viewer = ViewerModel()
+
+        def get_labels_layers(gui):
+            return [l for l in viewer.layers if isinstance(l, Labels)]
+
+        @magicgui(labels_layer=dict(widget_type='ComboBox', choices=get_labels_layers))
+        def widget(labels_layer):
+            pass
+
+        enable_layer_rename_refresh(widget, viewer=viewer)
+
+        new_layer = viewer.add_labels(np.zeros((5, 5), dtype=int), name='new_layer')
+        assert widget.labels_layer.current_choice == 'new_layer'
+
+        new_layer.name = 'renamed_new_layer'
+        assert widget.labels_layer.current_choice == 'renamed_new_layer'

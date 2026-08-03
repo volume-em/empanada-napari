@@ -1,6 +1,16 @@
 import os
 import re
+import sys
 import pytest
+
+# Some tests build real Qt/magicgui widgets (e.g. to verify layer-rename
+# refresh behavior). On headless Linux there's no X server, so Qt's default
+# "xcb" platform plugin fails to load (this can also manifest as a fatal
+# abort if opencv-python's bundled Qt plugins shadow PyQt5's). Default to
+# the "offscreen" platform on Linux unless the caller already set one.
+if sys.platform.startswith('linux'):
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+
 from empanada_napari.utils import get_configs
 
 

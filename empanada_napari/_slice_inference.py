@@ -6,7 +6,8 @@ from skimage.draw import polygon
 
 from empanada.config_loaders import read_yaml
 from empanada_napari.inference import Engine2d
-from empanada_napari.utils import get_configs, abspath
+from empanada_napari.utils import get_configs, abspath, enable_layer_rename_refresh
+from empanada.array_utils import take
 
 from napari import Viewer
 from napari.layers import Image, Labels, Shapes
@@ -46,6 +47,7 @@ class SliceInferenceWidget:
             use_quantized: bool = False,
             viewport: bool = False,
             confine_to_roi: bool = False,
+            roi_layer: Labels = None,
             output_to_layer: bool = False,
             output_layer: Labels = None,
             pbar: widgets.ProgressBar = None
@@ -67,6 +69,7 @@ class SliceInferenceWidget:
         self.using_quantized = use_quantized
         self.viewport = viewport
         self.confine_to_roi = confine_to_roi
+        self.roi_layer = roi_layer
         self.output_to_layer, self.output_layer = output_to_layer, output_layer
         self.pbar = pbar
         self.maximum_objects_per_class = int(maximum_objects_per_class)
@@ -89,8 +92,8 @@ class SliceInferenceWidget:
         # Get the 2d slice from the image (Can mock a layer/viewer object in the tests)
         if not self.batch_mode:
             if self.confine_to_roi:
-                shapes_layer = [layer for layer in self.viewer.layers if isinstance(layer, Shapes)][0]
-                image2d, y, x, y_max, x_max, binary_mask = self._get_roi_slice(self.image_layer, shapes_layer)
+                roi_layer = self._resolve_roi_layer()
+                image2d, y, x, y_max, x_max, binary_mask = self._get_roi_slice(self.image_layer, roi_layer)
                 image2d[binary_mask == False] = 0
                 axis, plane = "overloaded", self.image_layer.data.shape
             else:
@@ -115,7 +118,12 @@ class SliceInferenceWidget:
                 test_worker.start()
 
             case True, False:# For testing batch slice inference
-                seg, axis, plane, y, x = self._run_model_batch(self.engine, self.image_layer.data, self.fill_holes)
+                result = self._run_model_batch(self.engine, self.image_layer.data, self.fill_holes)
+                if self.image_layer.data.ndim == 2:
+                    seg, axis, plane, y, x = result
+                else:
+                    # 3D stack: _run_model_batch returns just the segmented stack
+                    seg, axis, plane, y, x = result, None, None, None, None
                 return seg, axis, plane, y, x
             
             case False, True:
@@ -267,24 +275,109 @@ class SliceInferenceWidget:
 
         return image[tuple(slices)], axis, plane, y, x
 
-    def _get_mask_from_roi(self, image_layer, shapes_layer):
-        h, w = image_layer.data.shape[:2]
+    def _resolve_roi_layer(self):
+        """Pick a Shapes or Labels layer to use as the ROI.
+
+        Priority:
+        1. First Shapes layer (preserves existing ROI-from-shapes workflows)
+        2. Explicitly selected Labels ``roi_layer``
+        3. First Labels layer that is not the output layer
+        """
+        shapes_layers = [layer for layer in self.viewer.layers if isinstance(layer, Shapes)]
+        if shapes_layers:
+            return shapes_layers[0]
+
+        if self.roi_layer is not None:
+            if not isinstance(self.roi_layer, (Shapes, Labels)):
+                raise TypeError(
+                    f"ROI layer must be a Shapes or Labels layer, got {type(self.roi_layer)}."
+                )
+            return self.roi_layer
+
+        labels_layers = [
+            layer for layer in self.viewer.layers
+            if isinstance(layer, Labels) and layer is not self.output_layer
+        ]
+        if labels_layers:
+            return labels_layers[0]
+
+        raise ValueError(
+            "Confine to ROI requires a Shapes layer or a Labels layer "
+            "(e.g. cell segmentations). Add one, or select it as ROI layer."
+        )
+
+    def _get_image_2d(self, image_layer):
+        image = image_layer.data
+        if image_layer.multiscale:
+            image = image[0]
+        if type(image) == da.core.Array:
+            image = image.compute()
+        image = np.asarray(image)
+        if image.ndim != 2:
+            raise ValueError(
+                f"Confine to ROI currently supports 2D images, got image with shape {image.shape}."
+            )
+        return image
+
+    def _get_labels_2d(self, labels_layer, image_shape):
+        labels = labels_layer.data
+        if type(labels) == da.core.Array:
+            labels = labels.compute()
+        labels = np.asarray(labels)
+        if labels.ndim != 2:
+            raise ValueError(
+                f"Confine to ROI with a Labels layer currently supports 2D labels, "
+                f"got labels with shape {labels.shape}."
+            )
+        if labels.shape != image_shape:
+            raise ValueError(
+                f"ROI labels shape {labels.shape} must match image shape {image_shape}."
+            )
+        return labels
+
+    def _get_mask_from_shapes_roi(self, image_shape, shapes_layer):
+        h, w = image_shape
         mask = np.zeros((h, w), dtype=bool)
         for shape in shapes_layer.data:
             rr, cc = polygon(shape[:, 0], shape[:, 1], (h, w))
             mask[rr, cc] = True
         return mask
 
-    def _get_roi_slice(self, image_layer, shapes_layer):
-        shapes = np.array(shapes_layer.data)
-        min_y, min_x = np.inf, np.inf
-        max_y, max_x = -np.inf, -np.inf
-        for shape in shapes:
-            min_y, min_x = min(min_y, shape[:, 0].min()), min(min_x, shape[:, 1].min())
-            max_y, max_x = max(max_y, shape[:, 0].max()), max(max_x, shape[:, 1].max())
-        min_y, min_x, max_y, max_x = map(int, (min_y, min_x, max_y, max_x))
-        roi = image_layer.data[min_y:max_y, min_x:max_x].copy()
-        mask = self._get_mask_from_roi(image_layer, shapes_layer)
+    def _get_bbox_from_mask(self, mask):
+        ys, xs = np.where(mask)
+        if ys.size == 0:
+            raise ValueError("ROI is empty: no pixels selected in the ROI layer.")
+        min_y, max_y = int(ys.min()), int(ys.max()) + 1
+        min_x, max_x = int(xs.min()), int(xs.max()) + 1
+        return min_y, min_x, max_y, max_x
+
+    def _get_roi_slice(self, image_layer, roi_layer):
+        image = self._get_image_2d(image_layer)
+
+        if isinstance(roi_layer, Labels):
+            labels = self._get_labels_2d(roi_layer, image.shape)
+            mask = labels > 0
+            min_y, min_x, max_y, max_x = self._get_bbox_from_mask(mask)
+        elif isinstance(roi_layer, Shapes):
+            if len(roi_layer.data) == 0:
+                raise ValueError("ROI Shapes layer has no shapes.")
+            # Keep vertex-based bbox for shapes (matches previous behavior / tests)
+            shapes = np.array(roi_layer.data)
+            min_y, min_x = np.inf, np.inf
+            max_y, max_x = -np.inf, -np.inf
+            for shape in shapes:
+                min_y = min(min_y, shape[:, 0].min())
+                min_x = min(min_x, shape[:, 1].min())
+                max_y = max(max_y, shape[:, 0].max())
+                max_x = max(max_x, shape[:, 1].max())
+            min_y, min_x, max_y, max_x = map(int, (min_y, min_x, max_y, max_x))
+            mask = self._get_mask_from_shapes_roi(image.shape, roi_layer)
+        else:
+            raise TypeError(
+                f"ROI layer must be a Shapes or Labels layer, got {type(roi_layer)}."
+            )
+
+        roi = image[min_y:max_y, min_x:max_x].copy()
         return roi, min_y, min_x, max_y, max_x, mask[min_y:max_y, min_x:max_x]
     
     def _check_option_compatibility(self):
@@ -330,16 +423,19 @@ class SliceInferenceWidget:
         return seg, axis, plane, y, x
 
     def _run_model_batch(self, engine, image, fill_holes):
-        # axis is always xy
-        axis = 0
-
         # create the inference engine
         if image.ndim == 3:
-            print(f'Running batch mode inference on {len(image)} images.')
+            # Slice along whichever axis is currently being viewed (xy, xz, or yz),
+            # instead of always assuming the array's first axis is xy.
+            axis = self.viewer.dims.order[0] if self.viewer is not None else 0
+            n_slices = image.shape[axis]
+            print(f'Running batch mode inference on {n_slices} images along axis {axis}.')
             segmentations = []
-            for plane, img_slice in tqdm(enumerate(image), total=len(image)):
+            for plane in tqdm(range(n_slices)):
+                img_slice = take(image, plane, axis)
                 if type(img_slice) == da.core.Array:
                     img_slice = img_slice.compute()
+                img_slice = np.asarray(img_slice)
 
                 seg = engine.infer(img_slice)
                 if fill_holes:
@@ -355,8 +451,14 @@ class SliceInferenceWidget:
                 padh, padw = max_h - h, max_w - w
                 padded.append(np.pad(seg, ((0, padh), (0, padw))))
 
-            padded = np.stack(padded, axis=0)
-            return padded
+            # stack along a new leading axis, then move it back to the axis
+            # that was actually sliced so the output matches the input
+            # volume's original orientation/shape.
+            stacked = np.stack(padded, axis=0)
+            if axis != 0:
+                stacked = np.moveaxis(stacked, 0, axis)
+
+            return stacked
 
         elif image.ndim == 2:
             start = time()
@@ -493,7 +595,9 @@ def slice_inference_widget():
                                        tooltip='If checked, run on GPU 0')
     # Add the new option to the gui_params dictionary
     gui_params['confine_to_roi'] = dict(widget_type='CheckBox', text='Confine to ROI', value=False,
-                                        tooltip='If checked, inference will be restricted to the ROI defined by a shapes layer.')
+                                        tooltip='Restrict inference to an ROI. Uses a Shapes layer if one exists; '
+                                                'otherwise uses the selected Labels ROI layer (e.g. cell segmentations). '
+                                                'Remove any Shapes layers to force Labels ROI.')
     
     @magicgui(
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
@@ -522,6 +626,7 @@ def slice_inference_widget():
             use_quantized,
             viewport,
             confine_to_roi,
+            roi_layer: Labels,
             output_to_layer,
             output_layer: Labels,
             pbar: widgets.ProgressBar
@@ -546,6 +651,7 @@ def slice_inference_widget():
             use_quantized=use_quantized,
             viewport=viewport,
             confine_to_roi=confine_to_roi,
+            roi_layer=roi_layer,
             output_to_layer=output_to_layer,
             output_layer=output_layer,
             pbar=pbar
@@ -560,7 +666,8 @@ def slice_inference_widget():
     scroll = QScrollArea()
     scroll.setWidget(widget._widget._qwidget)
     widget._widget._qwidget = scroll
-    
+
+    enable_layer_rename_refresh(widget)
     return widget
 
 

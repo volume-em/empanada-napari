@@ -75,7 +75,10 @@ def main_worker(config):
 
     if platform.system() == "Darwin":
         try:
-            mp.set_start_method('spawn')
+            # force=True: the plugin already sets this at import time
+            # (see empanada_napari/__init__.py), but re-assert it here in
+            # case something else locked in a different context first.
+            mp.set_start_method('spawn', force=True)
         except RuntimeError:
             pass
 

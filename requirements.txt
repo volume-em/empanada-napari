@@ -5,7 +5,6 @@ albumentations>=1.2
 pyyaml
 cztile>=2.0.0
 mlflow
-opencv-python>=4.11.0.0
 opencv-python-headless>=4.11.0.0
 napari[all]>=0.6.0
 numpy>=1.22

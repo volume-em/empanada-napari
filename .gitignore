@@ -166,3 +166,6 @@ cython_debug/
 *.zarr/
 .DS_Store
 *.zarr/
+
+# Local agent notes (do not commit)
+references.md

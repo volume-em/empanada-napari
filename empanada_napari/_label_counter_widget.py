@@ -3,6 +3,7 @@ from magicgui import magicgui
 import napari
 from napari import Viewer
 from napari.layers import Labels
+from empanada_napari.utils import enable_layer_rename_refresh
 import pandas as pd
 import os
 from openpyxl import Workbook
@@ -316,6 +317,7 @@ def label_counter_widget():
                 save_label_lists(label_type, class_names, label_queue, save_dir, labels_layer)
                 print(f'Saved Excel file to {save_dir}')
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 

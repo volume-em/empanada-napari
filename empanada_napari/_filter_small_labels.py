@@ -5,6 +5,7 @@ from skimage.measure import regionprops_table
 import pandas as pd
 from tqdm import tqdm
 from skimage.segmentation import clear_border
+from empanada_napari.utils import enable_layer_rename_refresh
 
 
 def remove_label_from_image(image_array, label):
@@ -135,6 +136,7 @@ def filter_small_labels():
             labels = np.squeeze(labels)
             viewer.add_labels(labels, name=f'Labels_removed_' + labels_layer.name, visible=True)
 
+    enable_layer_rename_refresh(widget)
     return widget
 
 
