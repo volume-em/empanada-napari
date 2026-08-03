@@ -331,6 +331,15 @@ def pick_patches():
         return np.stack(flipbooks, axis=0), np.stack(label_flipbooks, axis=0), locs
 
     gui_params = dict(
+        point_count=dict(
+            widget_type='Label',
+            label='Points (all slices)',
+            value='0',
+            tooltip=(
+                'Total number of points in the selected Points layer, including '
+                'points on slices not currently visible.'
+            ),
+        ),
         num_patches=dict(widget_type='SpinBox', value=16, min=1, max=3200, step=1, label='Number of patches for annotation'),
         patch_size=dict(widget_type='SpinBox', value=256, min=224, max=102400, step=16, label='Patch size in pixels'),
         pyramid_level=dict(widget_type='ComboBox', choices=list(range(9)), value=0, label='Multiscale image level', tooltip='If image layer is a multiscale image, pick the resolution level for patches. Assumes 2x scaling between levels.'),
@@ -352,6 +361,7 @@ def pick_patches():
         viewer: napari.viewer.Viewer,
         image_layer: napari.layers.Image,
         points_layer: napari.layers.Points,
+        point_count,
         num_patches,
         patch_size,
         pyramid_level,
@@ -488,6 +498,28 @@ def pick_patches():
         # were chosen as patches
         if points_layer is not None:
             points_layer.data = points_layer.data[num_patches:]
+
+    tracked_points_layer = None
+
+    def _update_point_count(*_):
+        points_layer = widget.points_layer.value
+        count = 0 if points_layer is None else len(points_layer.data)
+        widget.point_count.value = str(count)
+
+    def _track_points_layer(*_):
+        nonlocal tracked_points_layer
+
+        if tracked_points_layer is not None:
+            tracked_points_layer.events.data.disconnect(_update_point_count)
+
+        tracked_points_layer = widget.points_layer.value
+        if tracked_points_layer is not None:
+            tracked_points_layer.events.data.connect(_update_point_count)
+
+        _update_point_count()
+
+    widget.points_layer.changed.connect(_track_points_layer)
+    _track_points_layer()
 
     enable_layer_rename_refresh(widget)
     return widget
