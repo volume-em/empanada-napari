@@ -17,6 +17,9 @@ contributions:
   - id: empanada-napari.label_counter_widget
     title: Count Labels
     python_name: empanada_napari._label_counter_widget:label_counter_widget
+  - id: empanada-napari.measure_labels_widget
+    title: Measure Labels
+    python_name: empanada_napari._measure_labels:measure_labels_widget
   - id: empanada-napari.merge_labels
     title: Create Merge Labels
     python_name: empanada_napari._merge_split_widget:merge_labels
@@ -89,6 +92,8 @@ contributions:
     display_name: Export Segmentations
   - command: empanada-napari.label_counter_widget
     display_name: Count Labels
+  - command: empanada-napari.measure_labels_widget
+    display_name: Measure Labels
   - command: empanada-napari.merge_labels
     display_name: Merge Labels
   - command: empanada-napari.delete_labels
