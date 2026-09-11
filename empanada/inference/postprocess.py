@@ -270,7 +270,12 @@ def merge_semantic_and_instance(
         if torch.count_nonzero(thing_mask) == 0:
             continue
 
-        class_id, _ = torch.mode(sem_seg[thing_mask].view(-1, ))
+        votes = sem_seg[thing_mask].view(-1, )
+        # MPS has no mode kernel; retain the same majority vote on CPU.
+        if votes.device.type == 'mps':
+            votes = votes.cpu()
+        class_id, _ = torch.mode(votes)
+        class_id = class_id.to(sem_seg.device)
         if class_id.item() in class_id_tracker:
             new_ins_id = class_id_tracker[class_id.item()]
         else:
