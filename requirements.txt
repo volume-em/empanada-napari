@@ -1,5 +1,5 @@
-torch>=1.10
-torchvision>=0.2
+torch>=1.10,<2.14.0
+torchvision>=0.2,<0.28
 zarr>=2.12
 albumentations>=1.2
 pyyaml
@@ -10,7 +10,7 @@ napari[all]>=0.6.0
 numpy>=1.22
 napari-plugin-engine>=0.1.4
 scikit-image>=0.19
-numba>=0.58.1
+numba>=0.58.1,<0.66.0
 imagecodecs
 openpyxl
 imagehash
