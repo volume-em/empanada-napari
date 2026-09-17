@@ -63,6 +63,9 @@ napari
 
 Look for empanada-napari under the "Plugins" menu.
 
+On macOS, follow the Mac tab in the [installation guide](https://empanada.readthedocs.io/en/latest/getting_started/install.html)
+(`conda install` napari and pyqt, then `pip install empanada-napari`).
+
 
 ### Returning Users
 

@@ -173,6 +173,10 @@ def label_counter_widget():
         else:
             label_divisor = int(label_divisor)
         assert label_divisor > -1, "Label divisor must be a non-negative integer!"
+        assert labels_layer is not None, (
+            "Select a Labels layer first. Count Labels needs segmentation "
+            "labels (e.g. from 2D/3D Inference), not just an Image layer."
+        )
 
         labels = labels_layer.data
 

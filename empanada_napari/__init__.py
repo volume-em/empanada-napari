@@ -3,7 +3,79 @@ try:
 except ImportError:
     __version__ = "unknown"
 
+import importlib.util
+import os
 import platform
+from pathlib import Path
+
+
+def _point_bundled_libomp_at_conda():
+    r"""Make pip wheels reuse conda-forge's single OpenMP runtime.
+
+    Mixed conda + pip installs leave multiple libomp copies on disk
+    (conda llvm-openmp, torch/lib/libomp, sklearn/.dylibs/libomp, ...).
+    KMP_DUPLICATE_LIB_OK only skips OMP Error #15; during real inference
+    the two runtimes still collide (OMP Error #179 pthread_mutex_init).
+    When this Python env provides libomp, point known pip-bundled copies at
+    that one file so the process loads a single runtime.
+    """
+    system = platform.system()
+    if system == "Darwin":
+        lib_name = "libomp.dylib"
+    elif system == "Linux":
+        lib_name = "libomp.so"
+    else:
+        return
+
+    # Prefer sys.prefix (the env that is actually running). CONDA_PREFIX can
+    # still point at base when someone launches env/bin/python without activate.
+    import sys
+
+    libomp_candidates = [
+        Path(sys.prefix) / "lib" / lib_name,
+    ]
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix:
+        libomp_candidates.append(Path(conda_prefix) / "lib" / lib_name)
+
+    shared_libomp = next((p for p in libomp_candidates if p.is_file()), None)
+    if shared_libomp is None:
+        return
+
+    bundled_paths = []
+    for module_name, relative in (
+        ("torch", Path("lib") / lib_name),
+        ("sklearn", Path(".dylibs") / lib_name),
+    ):
+        try:
+            spec = importlib.util.find_spec(module_name)
+        except (ImportError, ModuleNotFoundError, ValueError):
+            continue
+        if spec is None or not spec.origin:
+            continue
+        bundled_paths.append(Path(spec.origin).resolve().parent / relative)
+
+    shared_resolved = shared_libomp.resolve()
+    for bundled in bundled_paths:
+        try:
+            if not bundled.exists() and not bundled.is_symlink():
+                continue
+            if bundled.resolve() == shared_resolved:
+                continue
+            bundled.unlink(missing_ok=True)
+            bundled.symlink_to(shared_libomp)
+        except OSError:
+            # Read-only env or missing parent dir: fall back to KMP flag below.
+            continue
+
+
+_point_bundled_libomp_at_conda()
+
+# Fallback if we could not unify libomp copies (no conda, permissions, etc.).
+# Prefer the symlink path above: this alone can still hit OMP Error #179
+# under heavy threaded inference.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import torch
 import torch.multiprocessing as mp
 
