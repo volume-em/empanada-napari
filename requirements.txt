@@ -5,7 +5,7 @@ albumentations>=1.2
 pyyaml
 cztile>=2.0.0
 mlflow
-opencv-python-headless>=4.11.0.0
+opencv-python-headless>=4.9
 napari[all]>=0.6.0
 numpy>=1.22
 napari-plugin-engine>=0.1.4
@@ -14,6 +14,16 @@ numba>=0.58.1
 imagecodecs
 openpyxl
 imagehash
-mlflow
 simpleitk
 tqdm
+
+# Intel Macs: hold each dependency at the newest release that still publishes an
+# x86_64 macOS wheel. See references.md for the full explanation.
+torch<=2.2.2; sys_platform == "darwin" and platform_machine == "x86_64"
+torchvision<=0.17.2; sys_platform == "darwin" and platform_machine == "x86_64"
+numpy<2; sys_platform == "darwin" and platform_machine == "x86_64"
+numba<0.61; sys_platform == "darwin" and platform_machine == "x86_64"
+opencv-python-headless<4.10; sys_platform == "darwin" and platform_machine == "x86_64"
+imagecodecs<2026.3; sys_platform == "darwin" and platform_machine == "x86_64"
+pyarrow<=16.1.0; sys_platform == "darwin" and platform_machine == "x86_64"
+triangle<=20230923; sys_platform == "darwin" and platform_machine == "x86_64"

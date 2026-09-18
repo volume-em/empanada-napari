@@ -79,6 +79,50 @@ Then install the newest version:
 pip install empanada-napari
 ```
 
+### Intel Macs (macOS 11 Big Sur through macOS 13 Ventura and newer)
+
+Installing the released version on an Intel Mac can fail while building `llvmlite`, with an error
+ending in `subprocess.CalledProcessError` and `Failed building wheel for llvmlite`. Many scientific
+Python packages have stopped publishing prebuilt Intel-Mac downloads, so pip tries to compile them
+from source and cannot.
+
+The `intel-fix` branch pins each affected dependency to the newest release that still provides a
+prebuilt Intel-Mac build. First check your Mac from the Terminal:
+
+```shell
+uname -m                  # x86_64 = Intel, arm64 = Apple Silicon
+sw_vers -productVersion   # must be 11.0 or higher
+```
+
+Then create a clean environment and install from the branch. Everything comes from pip, because
+mixing conda packages with pip's PyTorch puts two copies of the OpenMP library in the same process
+and triggers `OMP: Error #15`:
+
+```shell
+conda create -y -n empanada -c conda-forge python=3.11
+conda activate empanada
+
+pip install \
+  --only-binary=llvmlite,numba,torch,torchvision,numpy,scipy,pyarrow,PyQt5,opencv-python-headless,imagecodecs \
+  "napari[pyqt]==0.6.6" \
+  "git+https://github.com/volume-em/empanada-napari.git@intel-fix"
+```
+
+Verify the install:
+
+```shell
+python -c "import torch, numba, napari; print(torch.__version__, numba.__version__, napari.__version__)"
+napari
+```
+
+Use `napari[pyqt]` rather than `napari[all]` on Intel Macs. The `all` extra pulls in `triangle`,
+which no longer publishes an Intel-Mac build and would fail the same way `llvmlite` did. Avoid
+running `conda install` in this environment afterwards for the OpenMP reason above.
+
+If `sw_vers` reports a version starting with `10`, this branch will not help. OpenCV and PyQt5 both
+stopped supporting those releases, so use the older instructions for `empanada-napari==1.2.1` with
+`napari==0.4.18` on python 3.9.
+
 
 ![empanada](images/demo.gif)
 
