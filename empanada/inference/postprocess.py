@@ -12,7 +12,9 @@ Modifications:
 
 import torch
 import torch.nn.functional as F
-from typing import List
+from typing import Dict, List
+
+from empanada.compiled import compile_fn
 
 __all__ = [
     'factor_pad',
@@ -22,7 +24,7 @@ __all__ = [
     'get_panoptic_segmentation'
 ]
 
-@torch.jit.script
+@compile_fn
 def factor_pad(tensor, factor: int=16):
     r"""Helper function to pad a tensor such that all dimensions are divisble
     by a particular factor
@@ -35,7 +37,7 @@ def factor_pad(tensor, factor: int=16):
     else:
         return F.pad(tensor, (0, pad_right, 0, pad_bottom))
 
-@torch.jit.script
+@compile_fn
 def find_instance_center(ctr_hmp, threshold: float=0.1, nms_kernel: int=7):
     r"""Find the center points from the center heatmap.
 
@@ -75,7 +77,7 @@ def find_instance_center(ctr_hmp, threshold: float=0.1, nms_kernel: int=7):
     ctr_all = torch.nonzero(ctr_hmp > 0)
     return ctr_all
 
-@torch.jit.script
+@compile_fn
 def chunked_pixel_grouping(ctr, ctr_loc, chunksize: int=20):
     r"""Gives each pixel in the image an instance id without exceeding memory.
 
@@ -115,7 +117,7 @@ def chunked_pixel_grouping(ctr, ctr_loc, chunksize: int=20):
 
     return instance_ids
 
-@torch.jit.script
+@compile_fn
 def group_pixels(ctr, offsets, chunksize: int=20, step: float=1):
     r"""
     Gives each pixel in the image an instance id.
@@ -168,7 +170,7 @@ def group_pixels(ctr, offsets, chunksize: int=20, step: float=1):
 
     return instance_id
 
-@torch.jit.script
+@compile_fn
 def get_instance_segmentation(
     sem_seg,
     ctr_hmp,
@@ -220,7 +222,7 @@ def get_instance_segmentation(
     instance_id = group_pixels(ctr, offsets)
     return instance_seg * instance_id, ctr.unsqueeze(0)
 
-@torch.jit.script
+@compile_fn
 def merge_semantic_and_instance(
     sem_seg,
     ins_seg,
@@ -295,7 +297,7 @@ def merge_semantic_and_instance(
 
     return pan_seg
 
-@torch.jit.script
+@compile_fn
 def get_panoptic_segmentation(
     sem,
     ctr_hmp,

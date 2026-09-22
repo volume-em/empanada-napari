@@ -44,14 +44,29 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 ### New Users
 
-If you've previously installed and used conda, it's recommended (but optional) to create a new virtual 
-environment in order to avoid dependency conflicts. 
+empanada-napari works with Python 3.10–3.13 and napari<=0.6.6.
 
-empanada-napari works with python=3.10 to 3.13, and napari<=0.6.6
+Conda is supported. On macOS, `OMP: Error #15` means the process loaded two copies of `libomp.dylib`: conda's `llvm-openmp` and the copy inside a pip PyTorch wheel. Use one of the environments below so only one OpenMP runtime is present. Installing `napari[all]` into an existing conda environment leaves conda's `libomp.dylib` on the library path, so the error comes back. Skip `KMP_DUPLICATE_LIB_OK=TRUE`; that hides the check and can crash or return wrong segmentations.
 
-It's recommended to have installed napari through [conda](https://docs.conda.io/en/latest/miniconda.html). Then to install this plugin:
+#### pip
+
+Use this on macOS, or anywhere you are not already in a conda environment.
 
 ```shell
+python3 -m venv empanada-env
+source empanada-env/bin/activate
+python -m pip install -U pip
+pip install "napari[all]==0.6.6"
+pip install empanada-napari
+```
+
+#### conda
+
+Install napari and PyTorch from conda-forge first. The plugin's pip install then keeps that conda PyTorch, which shares OpenMP with conda napari.
+
+```shell
+conda create -n empanada-env -c conda-forge python=3.11 "napari=0.6.6" pytorch torchvision
+conda activate empanada-env
 pip install empanada-napari
 ```
 

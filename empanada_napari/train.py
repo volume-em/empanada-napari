@@ -246,12 +246,14 @@ def main_worker(config):
               scheduler, scaler, epoch, config)
 
         # evaluate on validation set
-        is_val_epoch = (epoch + 1) % config['EVAL']['epochs_per_eval'] == 0
-        is_last_epoch = (epoch + 1) % epochs == 0
+        epochs_per_eval = max(1, int(config['EVAL']['epochs_per_eval'] or 1))
+        save_freq = max(1, int(config['TRAIN']['save_freq'] or 1))
+        is_val_epoch = (epoch + 1) % epochs_per_eval == 0
+        is_last_epoch = (epoch + 1) == epochs
         if eval_loader is not None and (is_val_epoch or is_last_epoch):
             validate(eval_loader, model, criterion, epoch, config)
 
-        save_now = (epoch + 1) % config['TRAIN']['save_freq'] == 0
+        save_now = (epoch + 1) % save_freq == 0
         if save_now:
             torch.save({
                 'arch': config['MODEL']['arch'],

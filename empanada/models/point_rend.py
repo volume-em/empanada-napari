@@ -9,7 +9,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from empanada.models.blocks import *
 
-@torch.jit.script
+# Left as plain Python. Training still saves models with torch.jit.script,
+# and a torch.compile wrapper cannot be scripted into that archive.
+# torch.export cannot capture PointRend's data-dependent point sampling.
 def calculate_uncertainty(logits):
     """
     For each location of the prediction `sem_seg_logits` we estimate uncertainty as the
@@ -32,7 +34,6 @@ def calculate_uncertainty(logits):
         
     return uncertainty
 
-@torch.jit.script
 def point_sample(features, point_coords, mode: str="bilinear", align_corners: bool=False):
     """
     A wrapper around :function:`torch.nn.functional.grid_sample` to support 3D point_coords tensors.
@@ -59,7 +60,6 @@ def point_sample(features, point_coords, mode: str="bilinear", align_corners: bo
         
     return output
 
-@torch.jit.script
 def get_uncertain_point_coords_with_randomness(
     coarse_logits, 
     num_points: int, 
@@ -106,7 +106,6 @@ def get_uncertain_point_coords_with_randomness(
         
     return point_coords
 
-@torch.jit.script
 def get_uncertain_point_coords_on_grid(uncertainty_map, num_points: int):
     """
     Find `num_points` most uncertain points from `uncertainty_map` grid.
