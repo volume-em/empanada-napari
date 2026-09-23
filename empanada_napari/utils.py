@@ -48,6 +48,7 @@ def no_ssl_verification():
 __all__ = [
     'abspath'
     'get_configs',
+    'get_device',
     'Preprocessor',
     'enable_layer_rename_refresh'
 ]
@@ -119,6 +120,17 @@ def _download_with_retries(url, cached_file, max_retries=4, initial_backoff=2.0)
             time.sleep(wait_s)
 
 
+def get_device(use_gpu=True):
+    r"""Select CUDA, then Apple MPS, or CPU when GPU use is disabled."""
+    if use_gpu:
+        if torch.cuda.is_available():
+            return torch.device('cuda:0')
+        mps = getattr(torch.backends, 'mps', None)
+        if mps is not None and mps.is_available():
+            return torch.device('mps')
+    return torch.device('cpu')
+
+
 def _load_torchscript(path, map_location):
     r"""Load a published TorchScript archive without the jit deprecation warning.
 
@@ -137,7 +149,6 @@ def _load_torchscript(path, map_location):
             category=DeprecationWarning,
         )
         return torch.jit.load(path, map_location=map_location)
-
 
 def load_model_to_device(fpath_or_url, device):
     # check whether local file or url

@@ -19,7 +19,7 @@ from empanada import metrics
 from empanada.inference import engines
 from empanada.data.utils import FactorPad
 
-from empanada_napari.utils import load_model_to_device
+from empanada_napari.utils import load_model_to_device, get_device
 
 MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
 torch.hub.set_dir(MODEL_DIR)
@@ -65,7 +65,7 @@ def main(config):
     main_worker(config)
 
 def main_worker(config):
-    config['device'] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    config['device'] = get_device(config.get('use_gpu', True))
 
     if str(config['device']) == 'cpu':
         print(f"Using CPU for training.")
@@ -197,7 +197,7 @@ def main_worker(config):
             print(f'Steps per epoch adjusted from {n_steps} to {len(train_loader)}')
 
     scheduler = lr_scheduler.__dict__[schedule_name](optimizer, **schedule_params)
-    scaler = GradScaler() if config['TRAIN']['amp'] else None
+    scaler = GradScaler() if config['TRAIN']['amp'] and config['device'].type == 'cuda' else None
 
     config['start_epoch'] = 0
     if 'epochs' in config['TRAIN']['schedule_params']:
