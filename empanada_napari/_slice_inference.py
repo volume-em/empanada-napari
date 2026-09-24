@@ -361,11 +361,12 @@ class SliceInferenceWidget:
         elif isinstance(roi_layer, Shapes):
             if len(roi_layer.data) == 0:
                 raise ValueError("ROI Shapes layer has no shapes.")
-            # Keep vertex-based bbox for shapes (matches previous behavior / tests)
-            shapes = np.array(roi_layer.data)
+            # Keep vertex-based bbox for shapes (matches previous behavior / tests).
+            # Shapes can have different numbers of vertices, so the layer data is
+            # a ragged list of (N, D) arrays and must be iterated, not stacked.
             min_y, min_x = np.inf, np.inf
             max_y, max_x = -np.inf, -np.inf
-            for shape in shapes:
+            for shape in roi_layer.data:
                 min_y = min(min_y, shape[:, 0].min())
                 min_x = min(min_x, shape[:, 1].min())
                 max_y = max(max_y, shape[:, 0].max())
@@ -376,7 +377,6 @@ class SliceInferenceWidget:
             raise TypeError(
                 f"ROI layer must be a Shapes or Labels layer, got {type(roi_layer)}."
             )
-
         roi = image[min_y:max_y, min_x:max_x].copy()
         return roi, min_y, min_x, max_y, max_x, mask[min_y:max_y, min_x:max_x]
     
