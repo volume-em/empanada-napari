@@ -10,7 +10,7 @@ from empanada_napari.utils import get_configs, abspath, enable_layer_rename_refr
 from empanada.array_utils import take
 
 from napari import Viewer
-from napari.layers import Image, Labels, Shapes
+from napari.layers import Layer, Image, Labels, Shapes
 from napari_plugin_engine import napari_hook_implementation
 
 from magicgui import magicgui, widgets
@@ -47,7 +47,7 @@ class SliceInferenceWidget:
             use_quantized: bool = False,
             viewport: bool = False,
             confine_to_roi: bool = False,
-            roi_layer: Labels = None,
+            roi_layer: Labels | Shapes = None,
             output_to_layer: bool = False,
             output_layer: Labels = None,
             pbar: widgets.ProgressBar = None
@@ -626,7 +626,7 @@ def slice_inference_widget():
             use_quantized,
             viewport,
             confine_to_roi,
-            roi_layer: Labels,
+            roi_layer: Layer,
             output_to_layer,
             output_layer: Labels,
             pbar: widgets.ProgressBar
