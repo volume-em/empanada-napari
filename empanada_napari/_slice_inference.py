@@ -6,18 +6,17 @@ from skimage.draw import polygon
 
 from empanada.config_loaders import read_yaml
 from empanada_napari.inference import Engine2d
-from empanada_napari.utils import get_configs, abspath, enable_layer_rename_refresh
+from empanada_napari.utils import get_configs, abspath, enable_layer_rename_refresh, get_device
 from empanada.array_utils import take
 
 from napari import Viewer
-from napari.layers import Image, Labels, Shapes
+from napari.layers import Layer, Image, Labels, Shapes
 from napari_plugin_engine import napari_hook_implementation
 
 from magicgui import magicgui, widgets
 from skimage import measure
 from scipy.ndimage import binary_fill_holes
 from qtpy.QtWidgets import QScrollArea
-from torch.cuda import device_count
 from torch.backends.quantized import engine
 from napari.qt.threading import thread_worker
 
@@ -47,7 +46,7 @@ class SliceInferenceWidget:
             use_quantized: bool = False,
             viewport: bool = False,
             confine_to_roi: bool = False,
-            roi_layer: Labels = None,
+            roi_layer: Labels | Shapes = None,
             output_to_layer: bool = False,
             output_layer: Labels = None,
             pbar: widgets.ProgressBar = None
@@ -361,11 +360,12 @@ class SliceInferenceWidget:
         elif isinstance(roi_layer, Shapes):
             if len(roi_layer.data) == 0:
                 raise ValueError("ROI Shapes layer has no shapes.")
-            # Keep vertex-based bbox for shapes (matches previous behavior / tests)
-            shapes = np.array(roi_layer.data)
+            # Keep vertex-based bbox for shapes (matches previous behavior / tests).
+            # Shapes can have different numbers of vertices, so the layer data is
+            # a ragged list of (N, D) arrays and must be iterated, not stacked.
             min_y, min_x = np.inf, np.inf
             max_y, max_x = -np.inf, -np.inf
-            for shape in shapes:
+            for shape in roi_layer.data:
                 min_y = min(min_y, shape[:, 0].min())
                 min_x = min(min_x, shape[:, 1].min())
                 max_y = max(max_y, shape[:, 0].max())
@@ -589,10 +589,10 @@ def slice_inference_widget():
                              tooltip='If checked, the segmentation is output to the selected output layer.'),
     )
 
-    gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1,
-                                 tooltip='If checked, run on GPU 0')
-    gui_params['use_quantized'] = dict(widget_type='CheckBox', text='Use quantized model', value=device_count() == 0 and quantized_supported,
-                                       tooltip='If checked, run on GPU 0')
+    gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=get_device().type != 'cpu',
+                                 tooltip='If checked, run on GPU (CUDA or Apple MPS)')
+    gui_params['use_quantized'] = dict(widget_type='CheckBox', text='Use quantized model', value=get_device().type == 'cpu' and quantized_supported,
+                                       tooltip='If checked, use the quantized model for faster CPU inference')
     # Add the new option to the gui_params dictionary
     gui_params['confine_to_roi'] = dict(widget_type='CheckBox', text='Confine to ROI', value=False,
                                         tooltip='Restrict inference to an ROI. Uses a Shapes layer if one exists; '
@@ -626,7 +626,7 @@ def slice_inference_widget():
             use_quantized,
             viewport,
             confine_to_roi,
-            roi_layer: Labels,
+            roi_layer: Layer,
             output_to_layer,
             output_layer: Labels,
             pbar: widgets.ProgressBar
