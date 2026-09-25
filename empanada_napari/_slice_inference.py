@@ -10,7 +10,7 @@ from empanada_napari.utils import get_configs, abspath, enable_layer_rename_refr
 from empanada.array_utils import take
 
 from napari import Viewer
-from napari.layers import Image, Labels, Shapes
+from napari.layers import Layer, Image, Labels, Shapes
 from napari_plugin_engine import napari_hook_implementation
 
 from magicgui import magicgui, widgets
@@ -46,7 +46,7 @@ class SliceInferenceWidget:
             use_quantized: bool = False,
             viewport: bool = False,
             confine_to_roi: bool = False,
-            roi_layer: Labels = None,
+            roi_layer: Labels | Shapes = None,
             output_to_layer: bool = False,
             output_layer: Labels = None,
             pbar: widgets.ProgressBar = None
@@ -360,11 +360,12 @@ class SliceInferenceWidget:
         elif isinstance(roi_layer, Shapes):
             if len(roi_layer.data) == 0:
                 raise ValueError("ROI Shapes layer has no shapes.")
-            # Keep vertex-based bbox for shapes (matches previous behavior / tests)
-            shapes = np.array(roi_layer.data)
+            # Keep vertex-based bbox for shapes (matches previous behavior / tests).
+            # Shapes can have different numbers of vertices, so the layer data is
+            # a ragged list of (N, D) arrays and must be iterated, not stacked.
             min_y, min_x = np.inf, np.inf
             max_y, max_x = -np.inf, -np.inf
-            for shape in shapes:
+            for shape in roi_layer.data:
                 min_y = min(min_y, shape[:, 0].min())
                 min_x = min(min_x, shape[:, 1].min())
                 max_y = max(max_y, shape[:, 0].max())
@@ -625,7 +626,7 @@ def slice_inference_widget():
             use_quantized,
             viewport,
             confine_to_roi,
-            roi_layer: Labels,
+            roi_layer: Layer,
             output_to_layer,
             output_layer: Labels,
             pbar: widgets.ProgressBar
