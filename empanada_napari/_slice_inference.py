@@ -279,20 +279,20 @@ class SliceInferenceWidget:
         """Pick a Shapes or Labels layer to use as the ROI.
 
         Priority:
-        1. First Shapes layer (preserves existing ROI-from-shapes workflows)
-        2. Explicitly selected Labels ``roi_layer``
+        1. Explicitly selected Shapes or Labels ``roi_layer``
+        2. First Shapes layer
         3. First Labels layer that is not the output layer
         """
-        shapes_layers = [layer for layer in self.viewer.layers if isinstance(layer, Shapes)]
-        if shapes_layers:
-            return shapes_layers[0]
-
         if self.roi_layer is not None:
             if not isinstance(self.roi_layer, (Shapes, Labels)):
                 raise TypeError(
                     f"ROI layer must be a Shapes or Labels layer, got {type(self.roi_layer)}."
                 )
             return self.roi_layer
+
+        shapes_layers = [layer for layer in self.viewer.layers if isinstance(layer, Shapes)]
+        if shapes_layers:
+            return shapes_layers[0]
 
         labels_layers = [
             layer for layer in self.viewer.layers
