@@ -169,3 +169,4 @@ cython_debug/
 
 # Local agent notes (do not commit)
 references.md
+empanada-test/
