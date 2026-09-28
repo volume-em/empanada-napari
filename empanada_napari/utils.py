@@ -48,6 +48,7 @@ def no_ssl_verification():
 __all__ = [
     'abspath'
     'get_configs',
+    'get_device',
     'Preprocessor',
     'enable_layer_rename_refresh'
 ]
@@ -119,10 +120,40 @@ def _download_with_retries(url, cached_file, max_retries=4, initial_backoff=2.0)
             time.sleep(wait_s)
 
 
+def get_device(use_gpu=True):
+    r"""Select CUDA, then Apple MPS, or CPU when GPU use is disabled."""
+    if use_gpu:
+        if torch.cuda.is_available():
+            return torch.device('cuda:0')
+        mps = getattr(torch.backends, 'mps', None)
+        if mps is not None and mps.is_available():
+            return torch.device('mps')
+    return torch.device('cpu')
+
+
+def _load_torchscript(path, map_location):
+    r"""Load a published TorchScript archive without the jit deprecation warning.
+
+    Shipped models (MitoNet and others) are TorchScript ``.pth`` files.
+    ``torch.export`` cannot open them, so this stays on ``torch.jit.load``.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*torch\.jit\.(load|script|save).*",
+            category=FutureWarning,
+        )
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*torch\.jit\.(load|script|save).*",
+            category=DeprecationWarning,
+        )
+        return torch.jit.load(path, map_location=map_location)
+
 def load_model_to_device(fpath_or_url, device):
     # check whether local file or url
     if os.path.isfile(fpath_or_url):
-        model = torch.jit.load(fpath_or_url, map_location=device)
+        model = _load_torchscript(fpath_or_url, map_location=device)
     else:
         hub_dir = torch.hub.get_dir()
 
@@ -141,7 +172,7 @@ def load_model_to_device(fpath_or_url, device):
             sys.stderr.write('Downloading: "{}" to {}\n'.format(fpath_or_url, cached_file))
             _download_with_retries(fpath_or_url, cached_file)
 
-        model = torch.jit.load(cached_file, map_location=device)
+        model = _load_torchscript(cached_file, map_location=device)
 
     return model
 

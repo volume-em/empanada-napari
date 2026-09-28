@@ -6,18 +6,17 @@ from skimage.draw import polygon
 
 from empanada.config_loaders import read_yaml
 from empanada_napari.inference import Engine2d
-from empanada_napari.utils import get_configs, abspath, enable_layer_rename_refresh
+from empanada_napari.utils import get_configs, abspath, enable_layer_rename_refresh, get_device
 from empanada.array_utils import take
 
 from napari import Viewer
-from napari.layers import Image, Labels, Shapes
+from napari.layers import Layer, Image, Labels, Shapes
 from napari_plugin_engine import napari_hook_implementation
 
 from magicgui import magicgui, widgets
 from skimage import measure
 from scipy.ndimage import binary_fill_holes
 from qtpy.QtWidgets import QScrollArea
-from torch.cuda import device_count
 from torch.backends.quantized import engine
 from napari.qt.threading import thread_worker
 
@@ -47,7 +46,7 @@ class SliceInferenceWidget:
             use_quantized: bool = False,
             viewport: bool = False,
             confine_to_roi: bool = False,
-            roi_layer: Labels = None,
+            roi_layer: Labels | Shapes = None,
             output_to_layer: bool = False,
             output_layer: Labels = None,
             pbar: widgets.ProgressBar = None
@@ -279,20 +278,20 @@ class SliceInferenceWidget:
         """Pick a Shapes or Labels layer to use as the ROI.
 
         Priority:
-        1. First Shapes layer (preserves existing ROI-from-shapes workflows)
-        2. Explicitly selected Labels ``roi_layer``
+        1. Explicitly selected Shapes or Labels ``roi_layer``
+        2. First Shapes layer
         3. First Labels layer that is not the output layer
         """
-        shapes_layers = [layer for layer in self.viewer.layers if isinstance(layer, Shapes)]
-        if shapes_layers:
-            return shapes_layers[0]
-
         if self.roi_layer is not None:
             if not isinstance(self.roi_layer, (Shapes, Labels)):
                 raise TypeError(
                     f"ROI layer must be a Shapes or Labels layer, got {type(self.roi_layer)}."
                 )
             return self.roi_layer
+
+        shapes_layers = [layer for layer in self.viewer.layers if isinstance(layer, Shapes)]
+        if shapes_layers:
+            return shapes_layers[0]
 
         labels_layers = [
             layer for layer in self.viewer.layers
@@ -361,11 +360,12 @@ class SliceInferenceWidget:
         elif isinstance(roi_layer, Shapes):
             if len(roi_layer.data) == 0:
                 raise ValueError("ROI Shapes layer has no shapes.")
-            # Keep vertex-based bbox for shapes (matches previous behavior / tests)
-            shapes = np.array(roi_layer.data)
+            # Keep vertex-based bbox for shapes (matches previous behavior / tests).
+            # Shapes can have different numbers of vertices, so the layer data is
+            # a ragged list of (N, D) arrays and must be iterated, not stacked.
             min_y, min_x = np.inf, np.inf
             max_y, max_x = -np.inf, -np.inf
-            for shape in shapes:
+            for shape in roi_layer.data:
                 min_y = min(min_y, shape[:, 0].min())
                 min_x = min(min_x, shape[:, 1].min())
                 max_y = max(max_y, shape[:, 0].max())
@@ -589,15 +589,12 @@ def slice_inference_widget():
                              tooltip='If checked, the segmentation is output to the selected output layer.'),
     )
 
-    gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=device_count() >= 1,
-                                 tooltip='If checked, run on GPU 0')
-    gui_params['use_quantized'] = dict(widget_type='CheckBox', text='Use quantized model', value=device_count() == 0 and quantized_supported,
-                                       tooltip='If checked, run on GPU 0')
-    # Add the new option to the gui_params dictionary
+    gui_params['use_gpu'] = dict(widget_type='CheckBox', text='Use GPU', value=get_device().type != 'cpu',
+                                 tooltip='If checked, run on GPU (CUDA or Apple MPS)')
+    gui_params['use_quantized'] = dict(widget_type='CheckBox', text='Use quantized model', value=get_device().type == 'cpu' and quantized_supported,
+                                       tooltip='If checked, use the quantized model for faster CPU inference')
     gui_params['confine_to_roi'] = dict(widget_type='CheckBox', text='Confine to ROI', value=False,
-                                        tooltip='Restrict inference to an ROI. Uses a Shapes layer if one exists; '
-                                                'otherwise uses the selected Labels ROI layer (e.g. cell segmentations). '
-                                                'Remove any Shapes layers to force Labels ROI.')
+                                        tooltip='Restrict inference to an ROI. Uses (Shapes or Labels) layer selected in roi_layer.')
     
     @magicgui(
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
@@ -626,7 +623,7 @@ def slice_inference_widget():
             use_quantized,
             viewport,
             confine_to_roi,
-            roi_layer: Labels,
+            roi_layer: Layer,
             output_to_layer,
             output_layer: Labels,
             pbar: widgets.ProgressBar
@@ -661,6 +658,20 @@ def slice_inference_widget():
         # use_thread=True will output result to napari layer/viewer
         inference_config.config_and_run_inference(use_thread=True)
         pbar.show()
+
+    # magicgui can't use multiple type-hints (Labels | Shapes)
+    # Annotate roi_layer as Layer, restrict choices to Shapes and Labels layers
+    def _roi_layer_choices(roi_widget):
+        viewer = widget.viewer.value
+        if viewer is None:
+            return []
+        return [layer for layer in viewer.layers if isinstance(layer, (Shapes, Labels))]
+
+    widget.roi_layer.choices = _roi_layer_choices
+
+    # only show the ROI layer dropdown when confine_to_roi is checked
+    widget.roi_layer.visible = widget.confine_to_roi.value
+    widget.confine_to_roi.changed.connect(lambda checked: setattr(widget.roi_layer, 'visible', checked))
 
     # make the scroll available
     scroll = QScrollArea()

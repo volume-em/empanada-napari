@@ -1,9 +1,84 @@
-import napari
-from napari import Viewer
-from napari.layers import Image, Labels
 from napari_plugin_engine import napari_hook_implementation
-from magicgui import magicgui
-from empanada_napari.utils import enable_layer_rename_refresh
+
+
+def _path_from_dask_task(task):
+    r"""Return the file path argument from a dask imread task.
+
+    Older dask stored tasks as ``(func, path, ...)`` tuples. Newer dask
+    (e.g. 2026.x) stores ``Task`` objects where ``task.args[0]`` is the path.
+    See https://github.com/volume-em/empanada-napari/issues/77.
+    """
+    if isinstance(task, (tuple, list)):
+        if len(task) >= 2 and isinstance(task[1], str):
+            return task[1]
+        return None
+
+    args = getattr(task, 'args', None) or ()
+    for arg in args:
+        if isinstance(arg, str):
+            return arg
+    return None
+
+
+def _get_impaths_from_dask(dask_array):
+    r"""Extract source image paths from a napari Open Folder dask stack.
+
+    Paths are ordered to match stack axis 0 when a ``stack-`` layer is
+    present. Falls back to imread-layer order if stack wiring cannot be
+    resolved.
+    """
+    graph = dask_array.dask
+    deps = getattr(graph, 'dependencies', {}) or {}
+
+    imread_paths = {}
+    for name in graph.layers:
+        if 'imread' not in str(name):
+            continue
+        path = _path_from_dask_task(graph[name])
+        if path is not None:
+            imread_paths[str(name)] = path
+
+    if not imread_paths:
+        return []
+
+    def _imread_for_from_value(from_value):
+        for dep in deps.get(from_value, ()) or ():
+            if 'imread' in str(dep) and str(dep) in imread_paths:
+                return imread_paths[str(dep)]
+        layer = graph.layers.get(from_value)
+        if layer is not None:
+            for item in layer.values():
+                for dep in getattr(item, 'dependencies', ()) or ():
+                    if 'imread' in str(dep) and str(dep) in imread_paths:
+                        return imread_paths[str(dep)]
+        return None
+
+    for layer_name, layer in graph.layers.items():
+        if 'stack' not in str(layer_name):
+            continue
+        paths_by_z = {}
+        for key, task in layer.items():
+            if not (isinstance(key, tuple) and len(key) >= 2):
+                continue
+            z = key[1]
+            if z in paths_by_z:
+                continue
+            from_value = None
+            if isinstance(task, tuple) and len(task) >= 2:
+                ref = task[1]
+                if isinstance(ref, tuple) and ref:
+                    from_value = ref[0]
+                elif isinstance(ref, str):
+                    from_value = ref
+            if from_value is None:
+                continue
+            path = _imread_for_from_value(from_value)
+            if path is not None:
+                paths_by_z[z] = path
+        if paths_by_z:
+            return [paths_by_z[z] for z in sorted(paths_by_z)]
+
+    return list(imread_paths.values())
 
 
 def export_batch_segs():
@@ -13,16 +88,15 @@ def export_batch_segs():
     import numpy as np
     from skimage import io
 
+    import napari
+    from napari.layers import Image, Labels
+    from magicgui import magicgui
+    from empanada_napari.utils import enable_layer_rename_refresh
+
     save_ops = {
         '2D images': '2D images',
         '3D image': '3D image',
     }
-
-    def _get_impaths_from_dask(dask_array):
-        # delayed keys
-        keys = [l for l in dask_array.dask.layers if 'imread' in l]
-        # absolute image paths
-        return [dask_array.dask[k][1] for k in keys]
 
     @magicgui(
         call_button='Export labels',
@@ -65,10 +139,19 @@ def export_batch_segs():
 
         if image.ndim == 3:
             if isinstance(image, da.Array):
-                imnames = [
-                    '.'.join(os.path.basename(imp).split('.')[:-1]) + '.tiff'
-                    for imp in _get_impaths_from_dask(image)
-                ]
+                impaths = _get_impaths_from_dask(image)
+                if len(impaths) == image.shape[0]:
+                    imnames = [
+                        '.'.join(os.path.basename(imp).split('.')[:-1]) + '.tiff'
+                        for imp in impaths
+                    ]
+                else:
+                    # Paths unavailable (unexpected graph); keep export working.
+                    zpad = math.ceil(math.log(max(image.shape[0], 1), 10))
+                    imnames = [
+                        image_layer.name + '_' + str(n).zfill(zpad) + '.tiff'
+                        for n in range(image.shape[0])
+                    ]
             else:
                 zpad = math.ceil(math.log(image.shape[0], 10))
                 imnames = [image_layer.name + '_' + str(n).zfill(zpad) + '.tiff' for n in range(image.shape[0])]

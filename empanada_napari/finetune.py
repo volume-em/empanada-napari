@@ -19,7 +19,7 @@ from empanada import metrics
 from empanada.inference import engines
 from empanada.data.utils import FactorPad
 
-from empanada_napari.utils import load_model_to_device
+from empanada_napari.utils import load_model_to_device, get_device
 
 MODEL_DIR = os.path.join(os.path.expanduser('~'), '.empanada')
 torch.hub.set_dir(MODEL_DIR)
@@ -65,7 +65,7 @@ def main(config):
     main_worker(config)
 
 def main_worker(config):
-    config['device'] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    config['device'] = get_device(config.get('use_gpu', True))
 
     if str(config['device']) == 'cpu':
         print(f"Using CPU for training.")
@@ -165,6 +165,12 @@ def main_worker(config):
             ToTensorV2()
         ])
         eval_dataset = data_cls(config['EVAL']['eval_dir'], transforms=eval_tfs, **config['FINETUNE']['dataset_params'])
+        if len(eval_dataset) == 0:
+            raise Exception(
+                f'Validation directory {config["EVAL"]["eval_dir"]} has no '
+                f'image/mask pairs. Expected <dir>/<dataset>/images and '
+                f'<dir>/<dataset>/masks.'
+            )
         # evaluation runs on a single gpu
         eval_loader = DataLoader(eval_dataset, batch_size=1, shuffle=False,
                                  pin_memory=torch.cuda.is_available(),
@@ -191,7 +197,7 @@ def main_worker(config):
             print(f'Steps per epoch adjusted from {n_steps} to {len(train_loader)}')
 
     scheduler = lr_scheduler.__dict__[schedule_name](optimizer, **schedule_params)
-    scaler = GradScaler() if config['TRAIN']['amp'] else None
+    scaler = GradScaler() if config['TRAIN']['amp'] and config['device'].type == 'cuda' else None
 
     config['start_epoch'] = 0
     if 'epochs' in config['TRAIN']['schedule_params']:
@@ -210,12 +216,14 @@ def main_worker(config):
               scheduler, scaler, epoch, config)
 
         # evaluate on validation set
-        is_val_epoch = (epoch + 1) % config['EVAL']['epochs_per_eval'] == 0
-        is_last_epoch = (epoch + 1) % epochs == 0
+        epochs_per_eval = max(1, int(config['EVAL']['epochs_per_eval'] or 1))
+        save_freq = max(1, int(config['TRAIN']['save_freq'] or 1))
+        is_val_epoch = (epoch + 1) % epochs_per_eval == 0
+        is_last_epoch = (epoch + 1) == epochs
         if eval_loader is not None and (is_val_epoch or is_last_epoch):
             validate(eval_loader, model, criterion, epoch, config)
 
-        save_now = (epoch + 1) % config['TRAIN']['save_freq'] == 0
+        save_now = (epoch + 1) % save_freq == 0
         if save_now:
             outpath = os.path.join(config['TRAIN']['model_dir'], config['model_name'])
             torch.jit.save(model, outpath + '.pth')
