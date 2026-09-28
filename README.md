@@ -46,7 +46,6 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 empanada-napari works with Python 3.10–3.13 and napari<=0.6.6.
 
-Conda is supported. On macOS, `OMP: Error #15` means the process loaded two copies of `libomp.dylib`: conda's `llvm-openmp` and the copy inside a pip PyTorch wheel. Use one of the environments below so only one OpenMP runtime is present. Installing `napari[all]` into an existing conda environment leaves conda's `libomp.dylib` on the library path, so the error comes back. Skip `KMP_DUPLICATE_LIB_OK=TRUE`; that hides the check and can crash or return wrong segmentations.
 
 #### pip
 
