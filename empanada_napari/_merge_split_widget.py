@@ -1,4 +1,3 @@
-from napari_plugin_engine import napari_hook_implementation
 from magicgui import magicgui
 from empanada.array_utils import crop_and_binarize, take, put
 from empanada_napari.utils import enable_layer_rename_refresh
@@ -768,27 +767,3 @@ def find_next_available_label():
 
     enable_layer_rename_refresh(widget)
     return widget
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def morph_labels_widget():
-    return morph_labels, {'name': 'Morph Labels'}
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def delete_labels_widget():
-    return delete_labels, {'name': 'Delete Labels'}
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def merge_labels_widget():
-    return merge_labels, {'name': 'Merge Labels'}
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def split_labels_widget():
-    return split_labels, {'name': 'Split Labels'}
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def jump_to_label_widget():
-    return jump_to_label, {'name': 'Jump to Label'}
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def find_next_available_label_widget():
-    return find_next_available_label, {'name': 'Find next available label'}

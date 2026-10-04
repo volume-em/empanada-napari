@@ -3,7 +3,6 @@ import yaml
 import os
 import platform
 from typing import Any
-from napari_plugin_engine import napari_hook_implementation
 
 import numpy as np
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QPlainTextEdit
@@ -264,7 +263,3 @@ def training_widget():
         worker.start()
 
     return widget
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def training_dock_widget():
-    return training_widget, {'name': 'Train a model'}
