@@ -11,7 +11,6 @@ from empanada.array_utils import take
 
 from napari import Viewer
 from napari.layers import Image, Labels, Shapes
-from napari_plugin_engine import napari_hook_implementation
 
 from magicgui import magicgui, widgets
 from skimage import measure
@@ -669,8 +668,3 @@ def slice_inference_widget():
 
     enable_layer_rename_refresh(widget)
     return widget
-
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def slice_dock_widget():
-    return slice_inference_widget, {'name': '2D Inference (Parameter Testing)'}
