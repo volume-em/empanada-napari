@@ -25,7 +25,6 @@ if engine in (None or 'none'):
     quantized_supported = False
     
 
-
 class SliceInferenceWidget:
     def __init__(self, 
             image_layer: Image,
@@ -329,9 +328,13 @@ class SliceInferenceWidget:
                 f"got labels with shape {labels.shape}."
             )
         if labels.shape != image_shape:
-            raise ValueError(
-                f"ROI labels shape {labels.shape} must match image shape {image_shape}."
-            )
+            # Confine the labels to the image boundary: crop anything that
+            # extends past the image and zero-pad anything that falls short.
+            h, w = image_shape
+            confined = np.zeros(image_shape, dtype=labels.dtype)
+            ch, cw = min(h, labels.shape[0]), min(w, labels.shape[1])
+            confined[:ch, :cw] = labels[:ch, :cw]
+            labels = confined
         return labels
 
     def _get_mask_from_shapes_roi(self, image_shape, shapes_layer):
@@ -360,9 +363,7 @@ class SliceInferenceWidget:
         elif isinstance(roi_layer, Shapes):
             if len(roi_layer.data) == 0:
                 raise ValueError("ROI Shapes layer has no shapes.")
-            # Keep vertex-based bbox for shapes (matches previous behavior / tests).
-            # Shapes can have different numbers of vertices, so the layer data is
-            # a ragged list of (N, D) arrays and must be iterated, not stacked.
+            
             min_y, min_x = np.inf, np.inf
             max_y, max_x = -np.inf, -np.inf
             for shape in roi_layer.data:
@@ -370,7 +371,15 @@ class SliceInferenceWidget:
                 min_x = min(min_x, shape[:, 1].min())
                 max_y = max(max_y, shape[:, 0].max())
                 max_x = max(max_x, shape[:, 1].max())
-            min_y, min_x, max_y, max_x = map(int, (min_y, min_x, max_y, max_x))
+
+            # Confine the bbox to the image boundary
+            h, w = image.shape
+            min_y = int(np.clip(np.floor(min_y), 0, h))
+            min_x = int(np.clip(np.floor(min_x), 0, w))
+            max_y = int(np.clip(max_y, 0, h))
+            max_x = int(np.clip(max_x, 0, w))
+            if max_y <= min_y or max_x <= min_x:
+                raise ValueError("ROI lies entirely outside the image boundary.")
             mask = self._get_mask_from_shapes_roi(image.shape, roi_layer)
         else:
             raise TypeError(
@@ -426,7 +435,6 @@ class SliceInferenceWidget:
         # create the inference engine
         if image.ndim == 3:
             # Slice along whichever axis is currently being viewed (xy, xz, or yz),
-            # instead of always assuming the array's first axis is xy.
             axis = self.viewer.dims.order[0] if self.viewer is not None else 0
             n_slices = image.shape[axis]
             print(f'Running batch mode inference on {n_slices} images along axis {axis}.')
@@ -451,9 +459,7 @@ class SliceInferenceWidget:
                 padh, padw = max_h - h, max_w - w
                 padded.append(np.pad(seg, ((0, padh), (0, padw))))
 
-            # stack along a new leading axis, then move it back to the axis
-            # that was actually sliced so the output matches the input
-            # volume's original orientation/shape.
+            # stack along a new leading axis, then move it back to orig sliced axis
             stacked = np.stack(padded, axis=0)
             if axis != 0:
                 stacked = np.moveaxis(stacked, 0, axis)
