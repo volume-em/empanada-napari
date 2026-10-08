@@ -1,12 +1,12 @@
 """torch.compile wrapper for helpers that used to be torch.jit.script."""
 
 import functools
+import sys
 
 import torch
 
-# Raised by dynamo/inductor when a function cannot be compiled. A normal
-# error from the function itself (ValueError, shape mismatch) must still
-# propagate, so only these compiler failures fall back to eager execution.
+# Raised by dynamo/inductor when a function cannot be compiled. 
+# A normal error from the function itself (ValueError, shape mismatch) must still propagate
 _COMPILE_FAILURE_NAMES = {
     "BackendCompilerFailed",
     "TorchDynamoException",
@@ -28,6 +28,25 @@ def _is_compile_failure(exc):
         return True
     return isinstance(exc, RuntimeError) and "compil" in str(exc).lower()
 
+
+def _triton_would_clash():
+    """Return True when importing triton now would crash the process.
+
+    ``torch.compile`` imports torch._dynamo, which imports triton when it is
+    installed. libtriton bundles its own LLVM. If another libLLVM is already
+    mapped (Mesa's OpenGL driver loads one once napari opens its canvas, e.g.
+    on WSLg or llvmpipe), loading libtriton segfaults. Loading triton before
+    the GL driver is fine, so only check while triton is not yet loaded.
+    """
+    if "triton._C.libtriton" in sys.modules:
+        return False
+    try:
+        with open("/proc/self/maps") as maps:
+            return any("libLLVM" in line for line in maps)
+    except OSError:
+        # Not Linux: no /proc, and no Mesa LLVM driver to clash with.
+        return False
+        
 
 def compile_fn(fn):
     """Compile a tensor function with ``torch.compile``.
