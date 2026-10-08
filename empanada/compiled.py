@@ -56,23 +56,32 @@ def compile_fn(fn):
     instance grouping branches on how many objects are in the image, and
     export rejects that data-dependent control flow.
 
-    PyTorch older than 2.0, and builds whose inductor backend has no C++
-    toolchain, run the original function instead.
+    Compilation is deferred to the first call, so importing this module
+    never imports torch._dynamo (and triton). PyTorch older than
+    2.0, builds whose inductor backend has no C++ toolchain, and processes
+    where loading triton would crash run the original function instead.
     """
     compile_impl = getattr(torch, "compile", None)
     if compile_impl is None:
         return fn
 
-    try:
-        compiled = compile_impl(fn, dynamic=True)
-    except TypeError:
-        compiled = compile_impl(fn)
+    state = {"compiled": None}
 
-    state = {"compiled": True}
+    def _get_compiled():
+        if state["compiled"] is None:
+            if _triton_would_clash():
+                state["compiled"] = False
+                return None
+            try:
+                state["compiled"] = compile_impl(fn, dynamic=True)
+            except TypeError:
+                state["compiled"] = compile_impl(fn)
+        return state["compiled"] or None
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        if not state["compiled"]:
+        compiled = _get_compiled()
+        if compiled is None:
             return fn(*args, **kwargs)
         try:
             return compiled(*args, **kwargs)
