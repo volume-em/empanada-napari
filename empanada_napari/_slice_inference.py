@@ -23,6 +23,11 @@ from napari.qt.threading import thread_worker
 quantized_supported = True
 if engine in (None or 'none'):
     quantized_supported = False
+
+# The dock callback builds a new widget on every click. Keep engines here so
+# repeat runs reuse a warmed model. Quantized Mini is slow for the first two
+# forwards while QNNPACK tunes, then matches FP32 (issue #81).
+_ENGINE_CACHE = {}
     
 
 class SliceInferenceWidget:
@@ -140,12 +145,13 @@ class SliceInferenceWidget:
 
     # ---------------- Engine management ----------------
     def get_engine(self):
-        reload_engine = (
-            self.engine is None
-            or self.last_config != self.model_config_name
+        cache_key = (
+            self.model_config_name,
+            bool(self.using_gpu),
+            bool(self.using_quantized),
         )
-
-        if reload_engine:
+        cached = _ENGINE_CACHE.get(cache_key)
+        if cached is None:
             self.engine = Engine2d(
                 self.model_config,
                 inference_scale=self.downsampling,
@@ -159,9 +165,11 @@ class SliceInferenceWidget:
                 use_gpu=self.using_gpu,
                 use_quantized=self.using_quantized,
             )
+            _ENGINE_CACHE[cache_key] = self.engine
         else:
-            # update the parameters of the engine
-            # without reloading the model
+            # Same weights as a previous click. Update knobs only.
+            self.engine = cached
+            print('Reusing loaded model.')
             self.engine.update_params(
                 inference_scale=self.downsampling,
                 label_divisor=self.maximum_objects_per_class,

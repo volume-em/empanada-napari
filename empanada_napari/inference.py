@@ -191,6 +191,8 @@ class Engine2d:
         else:
             model_url = model_config['model']
 
+        print(f'Using {device} for 2D inference'
+              f'{" (Use GPU unchecked)" if not use_gpu else ""}.')
         model = load_model_to_device(model_url, device)
         model = model.to(device)
 
@@ -358,6 +360,8 @@ class Engine3d:
         else:
             model_url = model_config['model']
 
+        print(f'Using {device} for 3D inference'
+              f'{" (Use GPU unchecked)" if not use_gpu else ""}.')
         model = load_model_to_device(model_url, device)
         model = model.to(device)
 

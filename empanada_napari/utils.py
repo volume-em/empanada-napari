@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 from empanada.config_loaders import read_yaml
+from empanada.inference.contiguous_encoder import wrap_contiguous_encoder_features
 import warnings
 import contextlib
 import json
@@ -174,7 +175,7 @@ def load_model_to_device(fpath_or_url, device):
 
         model = _load_torchscript(cached_file, map_location=device)
 
-    return model
+    return wrap_contiguous_encoder_features(model)
 
 def valid_url_or_file(fp):
     valid = False
