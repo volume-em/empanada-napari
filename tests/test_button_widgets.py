@@ -120,14 +120,14 @@ class TestSliceInference:
         # image coordinate (30, 50) is between the two cells
         assert not mask[20, 35]
 
-    def test_roi_prefers_shapes_over_labels(self, image_2d):
+    def test_roi_honors_selected_layer_over_shapes(self, image_2d):
         viewer = ViewerModel()
         image_layer = viewer.add_image(image_2d)
         labels = np.zeros(image_2d.shape, dtype=np.int32)
         labels[10:25, 15:40] = 1
         labels_layer = viewer.add_labels(labels)
         triangle = np.array([[11, 13], [30, 6], [30, 20]])
-        shapes_layer = viewer.add_shapes(triangle, shape_type="polygon", edge_width=5)
+        viewer.add_shapes(triangle, shape_type="polygon", edge_width=5)
 
         widget = SliceInferenceWidget(
             viewer=viewer,
@@ -136,7 +136,39 @@ class TestSliceInference:
             confine_to_roi=True,
             roi_layer=labels_layer,
         )
+        assert widget._resolve_roi_layer() is labels_layer
+
+    def test_roi_falls_back_to_shapes_when_none_selected(self, image_2d):
+        viewer = ViewerModel()
+        image_layer = viewer.add_image(image_2d)
+        labels = np.zeros(image_2d.shape, dtype=np.int32)
+        labels[10:25, 15:40] = 1
+        viewer.add_labels(labels)
+        triangle = np.array([[11, 13], [30, 6], [30, 20]])
+        shapes_layer = viewer.add_shapes(triangle, shape_type="polygon", edge_width=5)
+
+        widget = SliceInferenceWidget(
+            viewer=viewer,
+            image_layer=image_layer,
+            model_config=MODEL_NAMES['MitoNet_mini'],
+            confine_to_roi=True,
+            roi_layer=None,
+        )
         assert widget._resolve_roi_layer() is shapes_layer
+
+    def test_roi_dropdown_hidden_until_confine_checked(self, qtbot):
+        from empanada_napari._slice_inference import slice_inference_widget
+
+        widget = slice_inference_widget()
+        qtbot.addWidget(widget.native)
+        # magicgui .visible uses QWidget.isVisible() (False until the window is shown)
+        assert widget.roi_layer.native.isHidden()
+
+        widget.confine_to_roi.value = True
+        assert not widget.roi_layer.native.isHidden()
+
+        widget.confine_to_roi.value = False
+        assert widget.roi_layer.native.isHidden()
 
 
     @pytest.mark.slow

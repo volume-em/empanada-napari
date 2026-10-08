@@ -21,7 +21,7 @@ from empanada.inference.patterns import *
 from empanada.consensus import merge_objects_from_tiles, merge_semantic_from_tiles
 
 from napari.qt.threading import thread_worker
-from empanada_napari.utils import Preprocessor, load_model_to_device
+from empanada_napari.utils import Preprocessor, load_model_to_device, get_device
 import numpy as np
 
 
@@ -185,12 +185,14 @@ class Engine2d:
         use_quantized=False
     ):
         # check whether GPU is available
-        device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
+        device = get_device(use_gpu)
         if use_quantized and str(device) == 'cpu' and model_config.get('model_quantized') is not None:
             model_url = model_config['model_quantized']
         else:
             model_url = model_config['model']
 
+        print(f'Using {device} for 2D inference'
+              f'{" (Use GPU unchecked)" if not use_gpu else ""}.')
         model = load_model_to_device(model_url, device)
         model = model.to(device)
 
@@ -352,12 +354,14 @@ class Engine3d:
         fill_holes_in_segmentation=False
     ):
         # check whether GPU is available
-        device = torch.device('cuda:0' if torch.cuda.is_available() and use_gpu else 'cpu')
+        device = get_device(use_gpu)
         if use_quantized and str(device) == 'cpu' and model_config.get('model_quantized') is not None:
             model_url = model_config['model_quantized']
         else:
             model_url = model_config['model']
 
+        print(f'Using {device} for 3D inference'
+              f'{" (Use GPU unchecked)" if not use_gpu else ""}.')
         model = load_model_to_device(model_url, device)
         model = model.to(device)
 
@@ -579,4 +583,3 @@ class Engine3d:
         self.engine.reset()
 
         return stack, trackers
-
