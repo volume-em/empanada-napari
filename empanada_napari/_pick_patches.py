@@ -5,7 +5,6 @@ import random
 import numpy as np
 import dask.array as da
 from magicgui import magicgui
-from napari_plugin_engine import napari_hook_implementation
 from empanada.array_utils import take
 from empanada_napari.utils import enable_layer_rename_refresh
 
@@ -581,13 +580,3 @@ def store_dataset():
 
     enable_layer_rename_refresh(widget)
     return widget
-
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def pick_patches_widget():
-    return pick_patches, {'name': 'Pick finetune/training patches'}
-
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def store_dataset_widget():
-    return store_dataset, {'name': 'Save finetune/training patches'}
