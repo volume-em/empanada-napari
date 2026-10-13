@@ -42,41 +42,52 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 ## Installation
 
+empanada-napari works with Python 3.10 to 3.13 and napari>=0.5.0. We recommend [uv](https://docs.astral.sh/uv/getting-started/installation/)
+for installation.
+
 ### New Users
 
-If you've previously installed and used conda, it's recommended (but optional) to create a new virtual 
-environment in order to avoid dependency conflicts. 
-
-empanada-napari works with python=3.10 to 3.13, and napari<=0.6.6
-
-It's recommended to have installed napari through [conda](https://docs.conda.io/en/latest/miniconda.html). Then to install this plugin:
+Create a virtual environment containing napari and this plugin:
 
 ```shell
-pip install empanada-napari
+uv venv --python 3.12
+uv pip install "napari[all]" empanada-napari
 ```
 
 Launch napari:
 
 ```shell
-napari
+uv run napari
 ```
 
 Look for empanada-napari under the "Plugins" menu.
 
+To launch napari without creating an environment yourself:
+
+```shell
+uvx --from "napari[all]" --with empanada-napari napari
+```
+
+Prefer pip? `pip install "napari[all]" empanada-napari` inside any virtual environment also works.
+
 
 ### Returning Users
 
-If you installed napari into a virtual environment as suggested in the original release documentation, 
-be sure to activate it and uninstall the old empanada-napari.
+Activate the environment where you installed napari, then upgrade the plugin:
 
 ```shell
-pip uninstall empanada-napari
+uv pip install --upgrade empanada-napari
 ```
 
-Then install the newest version:
+
+### Development
+
+Clone the repository, then:
 
 ```shell
-pip install empanada-napari
+uv sync --group dev   # create .venv with all dependencies
+uv run napari         # launch napari with the plugin
+uv run pytest         # run the tests
 ```
 
 
@@ -102,18 +113,13 @@ nvidia-smi
 If this returns "command not found" then you need to [install the driver from NVIDIA](https://www.nvidia.com/download/index.aspx). Instead, if
 if the driver is installed correctly, you may need to switch to the GPU enabled version of torch.
 
-First, uninstall the current version of torch:
+Reinstall torch with the build matching your system. uv can detect the right CUDA version for you:
 
 ```shell
-pip uninstall torch
+uv pip install --reinstall torch torchvision --torch-backend=auto
 ```
 
-Then [install torch >= 1.10 using conda for your system](https://pytorch.org/get-started/locally/).
-This command should work:
-
-```shell
-conda install pytorch cudatoolkit -c pytorch
-```
+Alternatively, pick a specific build using the selector at [pytorch.org](https://pytorch.org/get-started/locally/).
 
 ## Citing this work
 
