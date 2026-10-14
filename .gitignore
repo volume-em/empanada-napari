@@ -123,6 +123,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-napari-upgrade/
 env/
 venv/
 ENV/

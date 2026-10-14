@@ -42,8 +42,8 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 ## Installation
 
-empanada-napari works with Python 3.10 to 3.13 and napari>=0.5.0. We recommend [uv](https://docs.astral.sh/uv/getting-started/installation/)
-for installation.
+empanada-napari works with Python 3.11–3.13 and current napari (tested with 0.9.x).
+We recommend [uv](https://docs.astral.sh/uv/getting-started/installation/) for installation.
 
 ### New Users
 
@@ -52,6 +52,13 @@ Create a virtual environment containing napari and this plugin:
 ```shell
 uv venv --python 3.12
 uv pip install "napari[all]" empanada-napari
+```
+
+Or pin the versions we test against:
+
+```shell
+uv venv --python 3.12
+uv pip install "napari[all]==0.9.2" empanada-napari
 ```
 
 Launch napari:

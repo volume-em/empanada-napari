@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
 
       # PRs and non-tag pushes: verify the package builds (satisfies required check).

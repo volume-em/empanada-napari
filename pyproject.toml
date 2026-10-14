@@ -9,11 +9,11 @@ description = "Napari plugin of algorithms for Panoptic Segmentation of organell
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
-    { name = "Allan Almeida" },
+    { name = "Allan Almeida", email = "almeidaa2@nih.gov" },
     { name = "Mariam Demir" },
-    { name = "Kedar Narayan", email = "almeidaa2@nih.gov" },
+    { name = "Kedar Narayan" },
 ]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -22,7 +22,6 @@ classifiers = [
     "Topic :: Software Development :: Testing",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
