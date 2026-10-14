@@ -9,7 +9,7 @@ description = "Napari plugin of algorithms for Panoptic Segmentation of organell
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 authors = [
     { name = "Allan Almeida", email = "almeidaa2@nih.gov" },
     { name = "Mariam Demir" },
@@ -22,8 +22,6 @@ classifiers = [
     "Topic :: Software Development :: Testing",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
 ]
@@ -33,7 +31,7 @@ dependencies = [
     "imagecodecs",
     "imagehash",
     "mlflow",
-    "napari>=0.5.0",
+    "napari>=0.9.0",
     "numba>=0.58.1",
     "numpy>=1.22",
     "opencv-python-headless>=4.11.0.0",
