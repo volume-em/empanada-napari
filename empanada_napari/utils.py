@@ -2,6 +2,7 @@ import os, sys, time, yaml
 import numpy as np
 import requests
 import torch
+import zipfile
 from pathlib import Path
 import urllib.error
 import urllib.request
@@ -89,16 +90,39 @@ _RETRYABLE_DOWNLOAD_ERRORS = (
 )
 
 
+def _is_complete_zip(path):
+    r"""Return True when ``path`` is a zip whose central directory can be read.
+
+    TorchScript checkpoints are zip archives. A connection that closes early
+    still leaves a file on disk, and ``torch.hub.download_url_to_file`` treats
+    that short read as success. Loading it later fails with
+    "failed finding central directory".
+    """
+    try:
+        with zipfile.ZipFile(path) as archive:
+            archive.namelist()
+    except (zipfile.BadZipFile, OSError, EOFError):
+        return False
+    return True
+
+
 def _download_with_retries(url, cached_file, max_retries=4, initial_backoff=2.0):
     r"""Downloads a file via torch.hub, retrying transient network errors
     (e.g. 502/504 gateway errors from a flaky CDN) with exponential backoff
     before giving up.
+
+    A finished download that is not a complete zip is treated as a failed
+    attempt so a truncated checkpoint is not cached.
     """
     hash_prefix = None
     for attempt in range(1, max_retries + 1):
         try:
             with no_ssl_verification():
                 torch.hub.download_url_to_file(url, cached_file, hash_prefix, progress=True)
+            if not _is_complete_zip(cached_file):
+                raise OSError(
+                    f'Downloaded weights are truncated (not a complete zip): {cached_file}'
+                )
             return
         except _RETRYABLE_DOWNLOAD_ERRORS as exc:
             # remove any partially-downloaded file so a retry starts fresh
@@ -136,6 +160,15 @@ def load_model_to_device(fpath_or_url, device):
         parts = urlparse(fpath_or_url)
         filename = os.path.basename(parts.path)
         cached_file = os.path.join(hub_dir, filename)
+
+        if os.path.exists(cached_file) and not _is_complete_zip(cached_file):
+            sys.stderr.write(
+                f'Cached model "{cached_file}" is incomplete; downloading again.\n'
+            )
+            try:
+                os.remove(cached_file)
+            except OSError:
+                pass
 
         if not os.path.exists(cached_file):
             sys.stderr.write('Downloading: "{}" to {}\n'.format(fpath_or_url, cached_file))
