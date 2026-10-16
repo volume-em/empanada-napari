@@ -54,7 +54,7 @@ Documentation = "https://github.com/volume-em/empanada-napari"
 [project.entry-points."napari.manifest"]
 empanada-napari = "empanada_napari:napari.yaml"
 
-[dependency-groups]
+[project.optional-dependencies]
 test = [
     "pytest",
     "pytest-benchmark",
@@ -64,7 +64,7 @@ test = [
 ]
 dev = [
     "napari[all]",
-    { include-group = "test" },
+    "empanada-napari[test]",
 ]
 
 [tool.hatch.build.targets.wheel]

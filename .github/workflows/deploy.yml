@@ -14,20 +14,25 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
       # PRs and non-tag pushes: verify the package builds (satisfies required check).
       - name: Validate package build
         if: "!startsWith(github.ref, 'refs/tags/')"
         run: |
-          uv build
+          python -m pip install -U pip build
+          python -m build
           echo "Package build succeeded"
 
       # Tag pushes only: publish to PyPI.
       - name: Publish to PyPI
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          uv build
-          uv publish
+          python -m pip install -U pip build twine
+          python -m build
+          python -m twine upload dist/*
         env:
-          UV_PUBLISH_TOKEN: ${{ secrets.TWINE_API_KEY }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TWINE_API_KEY }}
