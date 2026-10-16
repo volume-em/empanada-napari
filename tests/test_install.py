@@ -61,6 +61,9 @@ def test_display_set():
     import os
     if os.getenv("GITHUB_ACTIONS") == "true":
         pytest.skip("Skipping in GitHub Actions")
+    # DISPLAY is an X11 variable. macOS and Windows start napari without it.
+    if platform.system() != "Linux":
+        pytest.skip("DISPLAY is only required for an X11 session")
     if not os.environ.get("DISPLAY"):
         pytest.fail("DISPLAY unset - napari GUI unavailable")
 

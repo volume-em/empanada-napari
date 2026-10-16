@@ -42,17 +42,16 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 ## Installation
 
+empanada-napari requires Python 3.13 and napari 0.9+.
+
 ### New Users
 
-If you've previously installed and used conda, it's recommended (but optional) to create a new virtual 
-environment in order to avoid dependency conflicts. 
-
-empanada-napari works with python=3.10 to 3.13, and napari<=0.6.6
-
-It's recommended to have installed napari through [conda](https://docs.conda.io/en/latest/miniconda.html). Then to install this plugin:
+Create a virtual environment, then install napari and this plugin:
 
 ```shell
-pip install empanada-napari
+python3.13 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install "napari[all]==0.9.2" empanada-napari
 ```
 
 Launch napari:
@@ -66,18 +65,25 @@ Look for empanada-napari under the "Plugins" menu.
 
 ### Returning Users
 
-If you installed napari into a virtual environment as suggested in the original release documentation, 
-be sure to activate it and uninstall the old empanada-napari.
+Activate the environment where you installed napari, then upgrade the plugin:
 
 ```shell
-pip uninstall empanada-napari
+pip install --upgrade empanada-napari
 ```
 
-Then install the newest version:
+
+### Development
+
+Clone the repository, then:
 
 ```shell
-pip install empanada-napari
+python3.13 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+napari                      # launch napari with the plugin
+pytest                      # run the tests
 ```
+
 
 
 ![empanada](images/demo.gif)
@@ -102,18 +108,13 @@ nvidia-smi
 If this returns "command not found" then you need to [install the driver from NVIDIA](https://www.nvidia.com/download/index.aspx). Instead, if
 if the driver is installed correctly, you may need to switch to the GPU enabled version of torch.
 
-First, uninstall the current version of torch:
+Reinstall torch with a CUDA build matching your system using the selector at
+[pytorch.org](https://pytorch.org/get-started/locally/), for example:
 
 ```shell
-pip uninstall torch
+pip install --upgrade --force-reinstall torch torchvision
 ```
 
-Then [install torch >= 1.10 using conda for your system](https://pytorch.org/get-started/locally/).
-This command should work:
-
-```shell
-conda install pytorch cudatoolkit -c pytorch
-```
 
 ## Citing this work
 

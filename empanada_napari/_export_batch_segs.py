@@ -1,7 +1,6 @@
 import napari
 from napari import Viewer
 from napari.layers import Image, Labels
-from napari_plugin_engine import napari_hook_implementation
 from magicgui import magicgui
 from empanada_napari.utils import enable_layer_rename_refresh
 
@@ -112,7 +111,3 @@ def export_batch_segs():
 
     enable_layer_rename_refresh(widget)
     return widget
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def export_batch_segs_widget():
-    return export_batch_segs, {'name': 'Export Segmentations'}

@@ -1,10 +1,20 @@
+import io
 import os
 import urllib.error
+import zipfile
 from unittest import mock
 
 import pytest
 
-from empanada_napari.utils import _download_with_retries
+from empanada_napari.utils import _download_with_retries, _is_complete_zip, load_model_to_device
+
+
+def _write_minimal_zip(path):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("weights", b"ok")
+    with open(path, "wb") as handle:
+        handle.write(buffer.getvalue())
 
 
 class TestDownloadWithRetries:
@@ -23,8 +33,7 @@ class TestDownloadWithRetries:
             calls["n"] += 1
             if calls["n"] < 3:
                 raise urllib.error.HTTPError(url, 504, "Gateway Time-out", {}, None)
-            with open(cached_file, "w") as f:
-                f.write("ok")
+            _write_minimal_zip(cached_file)
 
         with mock.patch("torch.hub.download_url_to_file", side_effect=fake_download), \
              mock.patch("time.sleep", return_value=None) as mock_sleep:
@@ -68,8 +77,7 @@ class TestDownloadWithRetries:
                 raise urllib.error.URLError("connection reset")
             # on retry, the stale partial file must already be gone
             assert not os.path.exists(cached_file)
-            with open(cached_file, "w") as f:
-                f.write("ok")
+            _write_minimal_zip(cached_file)
 
         with mock.patch("torch.hub.download_url_to_file", side_effect=fake_download), \
              mock.patch("time.sleep", return_value=None):
@@ -78,8 +86,7 @@ class TestDownloadWithRetries:
             )
 
         assert calls["n"] == 2
-        with open(dst) as f:
-            assert f.read() == "ok"
+        assert _is_complete_zip(dst)
 
     def test_non_retryable_error_propagates_immediately(self, tmp_path):
         dst = str(tmp_path / "model.pt")
@@ -97,3 +104,41 @@ class TestDownloadWithRetries:
                 )
 
         assert calls["n"] == 1
+
+    def test_retries_when_download_is_truncated(self, tmp_path):
+        dst = str(tmp_path / "model.pt")
+        calls = {"n": 0}
+
+        def fake_download(url, cached_file, hash_prefix, progress=True):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                with open(cached_file, "wb") as handle:
+                    handle.write(b"PK\x03\x04truncated")
+                return
+            _write_minimal_zip(cached_file)
+
+        with mock.patch("torch.hub.download_url_to_file", side_effect=fake_download), \
+             mock.patch("time.sleep", return_value=None):
+            _download_with_retries(
+                "http://example.com/model.pt", dst, max_retries=3, initial_backoff=0.01
+            )
+
+        assert calls["n"] == 2
+        assert _is_complete_zip(dst)
+
+    def test_load_replaces_truncated_cache(self, tmp_path):
+        cached = tmp_path / "model.pth"
+        cached.write_bytes(b"PK\x03\x04truncated")
+        sentinel = object()
+
+        def fake_download(url, cached_file, hash_prefix, progress=True):
+            _write_minimal_zip(cached_file)
+
+        with mock.patch("empanada_napari.utils.torch.hub.get_dir", return_value=str(tmp_path)), \
+             mock.patch("torch.hub.download_url_to_file", side_effect=fake_download), \
+             mock.patch("empanada_napari.utils.torch.jit.load", return_value=sentinel) as load:
+            model = load_model_to_device("https://example.com/files/model.pth?download=1", "cpu")
+
+        assert model is sentinel
+        load.assert_called_once()
+        assert _is_complete_zip(cached)

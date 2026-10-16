@@ -3,7 +3,6 @@ import yaml
 import os
 import platform
 from typing import Any
-from napari_plugin_engine import napari_hook_implementation
 
 import numpy as np
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QPlainTextEdit
@@ -202,11 +201,3 @@ def get_info_widget():
             print(f'    Class {cl} ({cn}) requires {kind} segmentation, start annotation at label {start_label}')
 
     return widget
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def finetuning_dock_widget():
-    return finetuning_widget, {'name': 'Finetune a model'}
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def get_info_dock_widget():
-    return get_info_widget, {'name': 'Get model info'}

@@ -1,3 +1,82 @@
 [build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "empanada-napari"
+version = "1.2.4"
+description = "Napari plugin of algorithms for Panoptic Segmentation of organelles in EM"
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+authors = [
+    { name = "Allan Almeida", email = "almeidaa2@nih.gov" },
+    { name = "Mariam Demir" },
+    { name = "Kedar Narayan" },
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Framework :: napari",
+    "Topic :: Software Development :: Testing",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "albumentations>=1.2",
+    "cztile>=2.0.0",
+    "imagecodecs",
+    "imagehash",
+    "mlflow",
+    "napari>=0.9.0",
+    "numba>=0.58.1",
+    "numpy>=1.22",
+    "opencv-python-headless>=4.11.0.0",
+    "openpyxl",
+    "pyyaml",
+    "scikit-image>=0.19",
+    "simpleitk",
+    "torch>=1.10",
+    "torchvision>=0.2",
+    "tqdm",
+    "zarr>=2.12",
+]
+
+[project.urls]
+"Bug Tracker" = "https://github.com/volume-em/empanada-napari/issues"
+Documentation = "https://github.com/volume-em/empanada-napari"
+"Source Code" = "https://github.com/volume-em/empanada-napari"
+"User Support" = "https://github.com/volume-em/empanada-napari/issues"
+
+[project.entry-points."napari.manifest"]
+empanada-napari = "empanada_napari:napari.yaml"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-benchmark",
+    "pytest-dependency",
+    "pytest-qt",
+    "zenodo-get",
+]
+dev = [
+    "napari[all]",
+    "empanada-napari[test]",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["empanada", "empanada_napari"]
+
+[tool.hatch.build.targets.sdist]
+include = ["empanada", "empanada_napari", "tests", "LICENSE", "README.md"]
+exclude = ["**/__pycache__", "**/*.py[co]"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "benchmark: benchmarking tests to determine speed of running each segmentation model",
+    "gpu: tests require a NVidia gpu to run",
+]

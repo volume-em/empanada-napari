@@ -1,4 +1,3 @@
-from napari_plugin_engine import napari_hook_implementation
 from magicgui import magicgui
 import napari
 from napari import Viewer
@@ -319,8 +318,3 @@ def label_counter_widget():
 
     enable_layer_rename_refresh(widget)
     return widget
-
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def label_count_widget():
-    return label_counter_widget, {'name': 'Count Labels'}
