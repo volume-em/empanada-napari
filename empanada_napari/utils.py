@@ -303,6 +303,12 @@ class Preprocessor:
                 image = image * max_value
         else:
             max_value = np.iinfo(image.dtype).max
+            if max_value > 255:
+                # pre-normalize for unused range
+                mn, mx = image.min(), image.max()
+                if mx > mn:
+                    image = (image - mn) / (mx - mn)
+                    max_value = 1
 
         image = normalize(image, self.mean, self.std, max_pixel_value=max_value)
         return {'image': to_tensor(image)}
