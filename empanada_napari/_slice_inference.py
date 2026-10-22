@@ -476,43 +476,59 @@ class SliceInferenceWidget:
             raise Exception(f'Batch mode supports 2d and 3d, got {image.ndim}d.')
     
     # ---------------- GUI result functions ----------------
+    def _spatial_kwargs(self, offset=None):
+        # match the image layer's physical scale, position and units;
+        # offset is in data pixels, so convert it to world coordinates
+        scale = np.asarray(self.image_layer.scale, dtype=float)
+        translate = np.asarray(self.image_layer.translate, dtype=float)
+        if offset is not None:
+            translate = translate + np.asarray(offset, dtype=float) * scale
+
+        # oddly translate has to be a list and
+        # not an array or things break. WHY????
+        kwargs = {'scale': scale.tolist(), 'translate': translate.tolist()}
+        units = getattr(self.image_layer, 'units', None)  # napari >= 0.6
+        if units is not None:
+            kwargs['units'] = units
+        return kwargs
+
     def _show_batch_stack(self, *args):
         stack = args[0]
-        self.viewer.add_labels(stack, name=self.image_layer.name + '_batch_segs')
+        self.viewer.add_labels(
+            stack, name=self.image_layer.name + '_batch_segs', **self._spatial_kwargs()
+        )
         self.pbar.hide()
 
     def _show_test_result(self, *args):
         seg, axis, plane, y, x = args[0]
+        y = y or 0
+        x = x or 0
 
         if axis == "overloaded":
             out_2d = np.zeros(plane, dtype=seg.dtype)
             seg_shape = seg.shape
             out_2d[y:y + seg_shape[0], x:x + seg_shape[1]] = seg
             seg = out_2d
-            translate = [0, 0]
+            offset = [0, 0]
         elif axis is not None and plane is not None:
             if isinstance(axis, tuple) and isinstance(plane, tuple):
                 seg = np.expand_dims(seg, axis=axis)
-                translate = [0, 0, y, x]
-                translate[axis[0]] = plane[0]
-                translate[axis[1]] = plane[1]
+                offset = [0, 0, y, x]
+                offset[axis[0]] = plane[0]
+                offset[axis[1]] = plane[1]
             else:
                 seg = np.expand_dims(seg, axis=axis)
-
-                # oddly translate has to be a list and
-                # not an array or things break. WHY????
-                translate = self.image_layer.translate.tolist()
-                translate[axis] += plane
+                offset = [0, 0, 0]
+                offset[axis] = plane
                 yaxis, xaxis = [i for i in range(3) if i != axis]
-                if y is not None:
-                    translate[yaxis] += y
-                if x is not None:
-                    translate[xaxis] += x
+                offset[yaxis] = y
+                offset[xaxis] = x
         else:
-            translate = [y, x]
+            offset = [y, x]
 
-        self.viewer.add_labels(seg, name=f'empanada_seg_2d', visible=True, translate=tuple(translate))
-        self.viewer.layers[-1].scale = self.image_layer.scale
+        self.viewer.add_labels(
+            seg, name=f'empanada_seg_2d', visible=True, **self._spatial_kwargs(offset)
+        )
 
         self.pbar.hide()
 
