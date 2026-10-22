@@ -265,19 +265,23 @@ class VolumeInferenceWidget:
                 }
         translate = self.image_layer.translate
         scale = self.image_layer.scale
+        units = getattr(self.image_layer, 'units', None)  # napari >= 0.6
         ndim = self.image_layer.data[0].ndim if self.image_layer.multiscale else self.image_layer.data.ndim
         if ndim:
             shape = self.image_layer.data.shape
             if shape[0] in [1, 3, 4]:
                 translate = translate[1:]
                 scale = scale[1:]
+                units = units[1:] if units is not None else None
             elif shape[-1] in [1, 3, 4]:
                 translate = translate[:-1]
                 scale = scale[:-1]
+                units = units[:-1] if units is not None else None
+        kwargs = {'units': units} if units is not None else {}
         self.viewer.add_labels(
             mask, name=f'{self.image_layer.name}-{description}',
             visible=True, metadata=metadata, translate=translate,
-            scale=scale
+            scale=scale, **kwargs
         )
         self.pbar.hide()
 
