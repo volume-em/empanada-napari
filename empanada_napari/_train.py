@@ -65,6 +65,10 @@ def training_widget():
         if torch.cuda.is_available():
             model.cuda()
 
+        # Saved weights stay TorchScript. torch.jit.load is the only reader
+        # for the models already published with the plugin, and torch.export
+        # cannot capture this forward (dict outputs and data-dependent
+        # PointRend sampling). Post-processing uses torch.compile instead.
         model = torch.jit.script(model)
 
         print('Model scripted successfully.')
@@ -148,10 +152,24 @@ def training_widget():
         train_dir = str(train_dir)
         model_dir = str(model_dir)
 
-        if str(eval_dir) == '.':
+        # FileEdit defaults to Path('.') when left empty
+        eval_dir = str(eval_dir)
+        if eval_dir in ('.', '', 'None'):
             eval_dir = None
 
         assert os.path.isdir(train_dir)
+        if eval_dir is not None:
+            assert os.path.isdir(eval_dir), \
+                f'Validation directory does not exist: {eval_dir}'
+            n_eval = len(glob(os.path.join(eval_dir, '**/images/*')))
+            if not n_eval:
+                raise Exception(
+                    f'No images found in validation directory '
+                    f'{os.path.join(eval_dir, "**/images/*")}. '
+                    f'Expected the same layout as training data: '
+                    f'<dir>/<dataset>/images and <dir>/<dataset>/masks.'
+                )
+            print(f'Found {n_eval} images for validation.')
         if model_arch == 'PanopticBiFPN':
             assert patch_size % 128 == 0, "Patch size must be divisible by 128 to use PanopticBiFPN!"
 

@@ -71,10 +71,15 @@ def finetuning_widget():
         train_dir = str(train_dir)
         model_dir = str(model_dir)
 
-        if str(eval_dir) == '.':
+        # FileEdit defaults to Path('.') when left empty
+        eval_dir = str(eval_dir)
+        if eval_dir in ('.', '', 'None'):
             eval_dir = None
 
         assert os.path.isdir(train_dir)
+        if eval_dir is not None:
+            assert os.path.isdir(eval_dir), \
+                f'Validation directory does not exist: {eval_dir}'
 
         custom_config = str(custom_config)
         if custom_config != 'default config':
@@ -118,10 +123,23 @@ def finetuning_widget():
             for k in aug.keys():
                 aug[k] = patch_size if ('height' in k or 'width' in k) and aug.get(k) is None else aug[k]
 
-        config['TRAIN']['save_freq'] = epochs // 5
+        # epochs can be < 5 when iterations is small relative to
+        # dataset size; never allow a 0 divisor (ZeroDivisionError
+        # during the train/validate loop).
+        config['TRAIN']['save_freq'] = max(1, epochs // 5)
         config['EVAL']['eval_dir'] = eval_dir
-        # only run validation 5 times
-        config['EVAL']['epochs_per_eval'] = epochs // 5
+        config['EVAL']['epochs_per_eval'] = max(1, epochs // 5)
+
+        if eval_dir is not None:
+            n_eval = len(glob(os.path.join(eval_dir, '**/images/*')))
+            if not n_eval:
+                raise Exception(
+                    f'No images found in validation directory '
+                    f'{os.path.join(eval_dir, "**/images/*")}. '
+                    f'Expected the same layout as training data: '
+                    f'<dir>/<dataset>/images and <dir>/<dataset>/masks.'
+                )
+            print(f'Found {n_eval} images for validation.')
 
         if 'epochs' in config['TRAIN']['schedule_params']:
             config['TRAIN']['schedule_params']['epochs'] = epochs
