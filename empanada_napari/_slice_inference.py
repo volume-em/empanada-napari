@@ -93,16 +93,20 @@ class SliceInferenceWidget:
                 
         # Get the 2d slice from the image (Can mock a layer/viewer object in the tests)
         if not self.batch_mode:
-            if self.confine_to_roi:
-                roi_layer = self._resolve_roi_layer()
-                image2d, y, x, y_max, x_max, binary_mask = self._get_roi_slice(self.image_layer, roi_layer)
-                image2d[binary_mask == False] = 0
-                axis, plane = "overloaded", self.image_layer.data.shape
-            else:
-                image2d, axis, plane, y, x = self._get_current_slice(self.image_layer)
-            print(f'Image of size {image2d.shape} sliced at plane {plane} from axis {axis}')
+            image2d, axis, plane, y, x = self._get_current_slice(self.image_layer)
             if type(image2d) == da.core.Array:
                 image2d = image2d.compute()
+            image2d = np.asarray(image2d)
+            if self.confine_to_roi:
+                roi_layer = self._resolve_roi_layer()
+                image2d, min_y, min_x, _, _, binary_mask = self._apply_roi(
+                    image2d, roi_layer, y or 0, x or 0
+                )
+                image2d = np.array(image2d, copy=True)
+                image2d[binary_mask == False] = 0
+                y = (y or 0) + min_y
+                x = (x or 0) + min_x
+            print(f'Image of size {image2d.shape} sliced at plane {plane} from axis {axis}')
 
         # Run the inference methods (either threaded or synchronously)
         match (self.batch_mode, use_thread):
@@ -311,29 +315,67 @@ class SliceInferenceWidget:
             "(e.g. cell segmentations). Add one, or select it as ROI layer."
         )
 
-    def _get_image_2d(self, image_layer):
-        image = image_layer.data
-        if image_layer.multiscale:
+    def _image_ndim(self, image_layer=None):
+        layer = image_layer if image_layer is not None else self.image_layer
+        image = layer.data
+        if layer.multiscale:
             image = image[0]
-        if type(image) == da.core.Array:
-            image = image.compute()
-        image = np.asarray(image)
-        if image.ndim != 2:
-            raise ValueError(
-                f"Confine to ROI currently supports 2D images, got image with shape {image.shape}."
-            )
-        return image
+        return np.asarray(image).ndim
 
-    def _get_labels_2d(self, labels_layer, image_shape):
+    def _current_plane(self):
+        """Return (sliced_axis, plane_index) for the current 3D view, else (None, None)."""
+        ndim = self._image_ndim()
+        if ndim < 3 or self.viewer is None:
+            return None, None
+        axis = int(self.viewer.dims.order[0])
+        cursor_pos = self.viewer.cursor.position
+        plane = int(self.image_layer.world_to_data(cursor_pos)[axis])
+        return axis, plane
+
+    def _shape_plane_coords(self, shape, ndim):
+        """Vertex row/col coordinates in the currently displayed 2D plane."""
+        coords = np.asarray(shape)
+        if coords.ndim != 2 or coords.shape[1] < 2:
+            raise ValueError("ROI shape vertices must have at least 2 coordinates.")
+        if coords.shape[1] == 2 or ndim <= 2:
+            return coords[:, 0], coords[:, 1]
+        axis = int(self.viewer.dims.order[0]) if self.viewer is not None else 0
+        remaining = [i for i in range(min(ndim, coords.shape[1])) if i != axis]
+        if len(remaining) < 2:
+            remaining = list(range(coords.shape[1] - 2, coords.shape[1]))
+        return coords[:, remaining[0]], coords[:, remaining[1]]
+
+    def _get_image_2d(self, image_layer):
+        image2d, _, _, _, _ = self._get_current_slice(image_layer)
+        if type(image2d) == da.core.Array:
+            image2d = image2d.compute()
+        image2d = np.asarray(image2d)
+        if image2d.ndim != 2:
+            raise ValueError(
+                f"Confine to ROI requires a 2D slice, got image with shape {image2d.shape}."
+            )
+        return image2d
+
+    def _get_labels_2d(self, labels_layer, image_shape, origin_y=0, origin_x=0):
         labels = labels_layer.data
         if type(labels) == da.core.Array:
             labels = labels.compute()
         labels = np.asarray(labels)
-        if labels.ndim != 2:
+        if labels.ndim == 3:
+            axis, plane = self._current_plane()
+            if axis is None:
+                raise ValueError(
+                    "Confine to ROI with a 3D Labels layer requires a viewer to select the current plane."
+                )
+            plane = int(np.clip(plane, 0, labels.shape[axis] - 1))
+            labels = np.asarray(take(labels, plane, axis))
+        elif labels.ndim != 2:
             raise ValueError(
-                f"Confine to ROI with a Labels layer currently supports 2D labels, "
+                f"Confine to ROI with a Labels layer currently supports 2D or 3D labels, "
                 f"got labels with shape {labels.shape}."
             )
+        if origin_y or origin_x:
+            labels = labels[origin_y:origin_y + image_shape[0], origin_x:origin_x + image_shape[1]]
         if labels.shape != image_shape:
             # Confine the labels to the image boundary: crop anything that
             # extends past the image and zero-pad anything that falls short.
@@ -344,11 +386,13 @@ class SliceInferenceWidget:
             labels = confined
         return labels
 
-    def _get_mask_from_shapes_roi(self, image_shape, shapes_layer):
+    def _get_mask_from_shapes_roi(self, image_shape, shapes_layer, origin_y=0, origin_x=0):
         h, w = image_shape
         mask = np.zeros((h, w), dtype=bool)
+        ndim = self._image_ndim()
         for shape in shapes_layer.data:
-            rr, cc = polygon(shape[:, 0], shape[:, 1], (h, w))
+            rows, cols = self._shape_plane_coords(shape, ndim)
+            rr, cc = polygon(rows - origin_y, cols - origin_x, (h, w))
             mask[rr, cc] = True
         return mask
 
@@ -360,34 +404,40 @@ class SliceInferenceWidget:
         min_x, max_x = int(xs.min()), int(xs.max()) + 1
         return min_y, min_x, max_y, max_x
 
-    def _get_roi_slice(self, image_layer, roi_layer):
-        image = self._get_image_2d(image_layer)
+    def _apply_roi(self, image, roi_layer, origin_y=0, origin_x=0):
+        """Crop and mask a 2D slice with a Shapes or Labels ROI."""
+        if image.ndim != 2:
+            raise ValueError(
+                f"Confine to ROI requires a 2D slice, got image with shape {image.shape}."
+            )
 
         if isinstance(roi_layer, Labels):
-            labels = self._get_labels_2d(roi_layer, image.shape)
+            labels = self._get_labels_2d(roi_layer, image.shape, origin_y, origin_x)
             mask = labels > 0
             min_y, min_x, max_y, max_x = self._get_bbox_from_mask(mask)
         elif isinstance(roi_layer, Shapes):
             if len(roi_layer.data) == 0:
                 raise ValueError("ROI Shapes layer has no shapes.")
-            
+
+            ndim = self._image_ndim()
             min_y, min_x = np.inf, np.inf
             max_y, max_x = -np.inf, -np.inf
             for shape in roi_layer.data:
-                min_y = min(min_y, shape[:, 0].min())
-                min_x = min(min_x, shape[:, 1].min())
-                max_y = max(max_y, shape[:, 0].max())
-                max_x = max(max_x, shape[:, 1].max())
+                rows, cols = self._shape_plane_coords(shape, ndim)
+                min_y = min(min_y, (rows - origin_y).min())
+                min_x = min(min_x, (cols - origin_x).min())
+                max_y = max(max_y, (rows - origin_y).max())
+                max_x = max(max_x, (cols - origin_x).max())
 
             # Confine the bbox to the image boundary
             h, w = image.shape
             min_y = int(np.clip(np.floor(min_y), 0, h))
             min_x = int(np.clip(np.floor(min_x), 0, w))
-            max_y = int(np.clip(max_y, 0, h))
-            max_x = int(np.clip(max_x, 0, w))
+            max_y = int(np.clip(np.ceil(max_y), 0, h))
+            max_x = int(np.clip(np.ceil(max_x), 0, w))
             if max_y <= min_y or max_x <= min_x:
                 raise ValueError("ROI lies entirely outside the image boundary.")
-            mask = self._get_mask_from_shapes_roi(image.shape, roi_layer)
+            mask = self._get_mask_from_shapes_roi(image.shape, roi_layer, origin_y, origin_x)
         else:
             raise TypeError(
                 f"ROI layer must be a Shapes or Labels layer, got {type(roi_layer)}."
@@ -395,6 +445,13 @@ class SliceInferenceWidget:
 
         roi = image[min_y:max_y, min_x:max_x].copy()
         return roi, min_y, min_x, max_y, max_x, mask[min_y:max_y, min_x:max_x]
+
+    def _get_roi_slice(self, image_layer, roi_layer):
+        image2d, _, _, y0, x0 = self._get_current_slice(image_layer)
+        if type(image2d) == da.core.Array:
+            image2d = image2d.compute()
+        image2d = np.asarray(image2d)
+        return self._apply_roi(image2d, roi_layer, y0 or 0, x0 or 0)
     
     def _check_option_compatibility(self):
         if quantized_supported == False and self.using_quantized:
@@ -497,13 +554,7 @@ class SliceInferenceWidget:
     def _show_test_result(self, *args):
         seg, axis, plane, y, x = args[0]
 
-        if axis == "overloaded":
-            out_2d = np.zeros(plane, dtype=seg.dtype)
-            seg_shape = seg.shape
-            out_2d[y:y + seg_shape[0], x:x + seg_shape[1]] = seg
-            seg = out_2d
-            translate = [0, 0]
-        elif axis is not None and plane is not None:
+        if axis is not None and plane is not None:
             if isinstance(axis, tuple) and isinstance(plane, tuple):
                 seg = np.expand_dims(seg, axis=axis)
                 translate = [0, 0, y, x]
@@ -532,28 +583,33 @@ class SliceInferenceWidget:
 
     def _store_test_result(self, *args):
         seg, axis, plane, y, x = args[0]
+        y = y or 0
+        x = x or 0
+        h, w = seg.shape
 
-        if axis == "overloaded":
-            out_2d = np.zeros(plane, dtype=seg.dtype)
-            seg_shape = seg.shape
-            out_2d[y:y + seg_shape[0], x:x + seg_shape[1]] = seg
-            seg = out_2d
-            self.output_layer.data = seg
-        elif axis is not None and plane is not None:
+        if axis is not None and plane is not None:
             if isinstance(axis, tuple) and isinstance(plane, tuple):
                 # 4D flipbook case
                 slices = [slice(None), slice(None), slice(None), slice(None)]
                 slices[axis[0]] = plane[0]
                 slices[axis[1]] = plane[1]
+                slices[2] = slice(y, y + h)
+                slices[3] = slice(x, x + w)
                 self.output_layer.data[tuple(slices)] = seg
             else:
-                # 3D case
+                # 3D case: write into the current plane, offset by the ROI/viewport crop
                 slices = [slice(None), slice(None), slice(None)]
                 slices[axis] = plane
+                remaining = [i for i in range(3) if i != axis]
+                slices[remaining[0]] = slice(y, y + h)
+                slices[remaining[1]] = slice(x, x + w)
                 self.output_layer.data[tuple(slices)] = seg
         else:
-            # 2D case
-            self.output_layer.data = seg
+            # 2D case, including ROI crops that should paste back at (y, x)
+            if (y, x) != (0, 0) or (h, w) != tuple(self.output_layer.data.shape[-2:]):
+                self.output_layer.data[y:y + h, x:x + w] = seg
+            else:
+                self.output_layer.data = seg
 
         # self.output_layer.visible = False
         self.output_layer.visible = True
@@ -607,7 +663,7 @@ def slice_inference_widget():
     gui_params['use_quantized'] = dict(widget_type='CheckBox', text='Use quantized model', value=get_device().type == 'cpu' and quantized_supported,
                                        tooltip='If checked, use the quantized model for faster CPU inference')
     gui_params['confine_to_roi'] = dict(widget_type='CheckBox', text='Confine to ROI', value=False,
-                                        tooltip='Restrict inference to an ROI. Uses (Shapes or Labels) layer selected in roi_layer.')
+                                        tooltip='Restrict inference to an ROI on the current 2D slice (including the current plane of a 3D volume). Uses the selected Shapes or Labels layer.')
     
     @magicgui(
         label_head=dict(widget_type='Label', label=f'<h1 style="text-align:center"><img src="{logo}"></h1>'),
