@@ -511,6 +511,5 @@ def volume_inference_widget():
     return widget
 
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def volume_dock_widget():
     return volume_inference_widget, {'name': '3D Inference'}

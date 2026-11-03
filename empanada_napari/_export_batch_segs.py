@@ -1,6 +1,3 @@
-from napari_plugin_engine import napari_hook_implementation
-
-
 def _path_from_dask_task(task):
     r"""Return the file path argument from a dask imread task.
 

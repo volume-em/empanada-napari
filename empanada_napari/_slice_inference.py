@@ -11,7 +11,6 @@ from empanada.array_utils import take
 
 from napari import Viewer
 from napari.layers import Layer, Image, Labels, Shapes
-from napari_plugin_engine import napari_hook_implementation
 
 from magicgui import magicgui, widgets
 from skimage import measure
