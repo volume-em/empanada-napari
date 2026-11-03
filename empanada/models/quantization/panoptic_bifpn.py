@@ -61,7 +61,9 @@ class QuantizablePanopticBiFPN(PanopticBiFPN):
     def _forward_encoder(self, x: torch.Tensor):
         x = self.quant(x)
         features: List[torch.Tensor] = self.encoder(x)
-        return [self.dequant(t) for t in features]
+        # Quantized encoder maps can be non-contiguous; the FP32 decoder is
+        # much slower on that layout (issue #81).
+        return [self.dequant(t).contiguous() for t in features]
     
     def _apply_heads(self, semantic_x, instance_x):
         heads_out = {}

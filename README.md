@@ -42,16 +42,31 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 ## Installation
 
-empanada-napari requires Python 3.13 and napari 0.9+.
-
 ### New Users
 
-Create a virtual environment, then install napari and this plugin:
+empanada-napari works with Python 3.10–3.13 and napari<=0.6.6.
+
+
+#### pip
+
+Use this on macOS, or anywhere you are not already in a conda environment.
 
 ```shell
-python3.13 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install "napari[all]==0.9.2" empanada-napari
+python3 -m venv empanada-env
+source empanada-env/bin/activate
+python -m pip install -U pip
+pip install "napari[all]==0.6.6"
+pip install empanada-napari
+```
+
+#### conda
+
+Install napari and PyTorch from conda-forge first. The plugin's pip install then keeps that conda PyTorch, which shares OpenMP with conda napari.
+
+```shell
+conda create -n empanada-env -c conda-forge python=3.11 "napari=0.6.6" pytorch torchvision
+conda activate empanada-env
+pip install empanada-napari
 ```
 
 Launch napari:
@@ -90,7 +105,7 @@ pytest                      # run the tests
 
 ## GPU Support
 
-**Note: Mac doesn't support NVIDIA GPUS. This section only applies to Windows and Linux systems.**
+**Note: Apple Silicon GPUs are supported through torch's MPS backend when available. The setup instructions below only apply to NVIDIA GPUs on Windows and Linux.**
 
 As for any deep learning models, having a GPU installed on your system will significantly
 increase model throughput (although we ship CPU optimized versions of all models with the plugin).

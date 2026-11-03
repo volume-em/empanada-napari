@@ -58,12 +58,17 @@ class _MedianQueue:
 
     @torch.no_grad()
     def get_median(self, key):
+        stacked = torch.cat([output[key] for output in self.median_queue], dim=0)
+        # MPS median can return incorrect values for large tensors (torch 2.13).
+        # Keep the existing reduction on CPU until the backend is reliable.
+        device = stacked.device
+        if device.type == 'mps':
+            stacked = stacked.cpu()
         median = torch.median(
-            torch.cat([output[key] for output in self.median_queue], dim=0),
-            dim=0, keepdim=True
+            stacked, dim=0, keepdim=True
         ).values
 
-        return median
+        return median.to(device)
 
     def get_next(self, keys):
         nq = len(self.median_queue)
