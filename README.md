@@ -44,47 +44,50 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 ### New Users
 
-empanada-napari works with Python 3.10–3.13 and napari<=0.6.6.
-
+empanada-napari requires **Python ≥ 3.13** and **napari ≥ 0.9** (including 0.10.x).
 
 #### pip
 
-Use this on macOS, or anywhere you are not already in a conda environment.
-
 ```shell
-python3 -m venv empanada-env
-source empanada-env/bin/activate
+python3.13 -m venv empanada-env
+source empanada-env/bin/activate   # Windows: empanada-env\Scripts\activate
 python -m pip install -U pip
-pip install "napari[all]==0.6.6"
-pip install empanada-napari
+python -m pip install "napari[all]>=0.9"
+python -m pip install empanada-napari
 ```
 
 #### conda
 
-Install napari and PyTorch from conda-forge first. The plugin's pip install then keeps that conda PyTorch, which shares OpenMP with conda napari.
-
 ```shell
-conda create -n empanada-env -c conda-forge python=3.11 "napari=0.6.6" pytorch torchvision
+conda create -n empanada-env python=3.13 -y
 conda activate empanada-env
-pip install empanada-napari
+python -m pip install -U pip
+python -m pip install "napari[all]>=0.9"
+python -m pip install empanada-napari
 ```
 
-Launch napari:
+Launch napari from the same environment:
 
 ```shell
-napari
+python -m napari
 ```
 
-Look for empanada-napari under the "Plugins" menu.
+Prefer `python -m napari` over bare `napari` so the plugin loads from this environment (some systems still have an older `napari` earlier on `PATH`).
+
+Look for **empanada-napari** under the Plugins menu.
 
 
 ### Returning Users
 
-Activate the environment where you installed napari, then upgrade the plugin:
+Create or activate a Python 3.13 environment, then upgrade:
 
 ```shell
-pip install --upgrade empanada-napari
+conda activate empanada-env
+python -m pip install -U "napari[all]>=0.9" empanada-napari
+python -m napari
 ```
+
+Older installs on Python 3.10–3.12 or napari 0.6.x are not compatible with this release. Use a new 3.13 environment instead of upgrading in place.
 
 
 ### Development
@@ -92,11 +95,12 @@ pip install --upgrade empanada-napari
 Clone the repository, then:
 
 ```shell
-python3.13 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-napari                      # launch napari with the plugin
-pytest                      # run the tests
+conda create -n empanada-dev python=3.13 -y
+conda activate empanada-dev
+python -m pip install -U pip
+python -m pip install -e ".[dev]"
+python -m napari   # launch napari with the plugin
+pytest             # run the tests
 ```
 
 
