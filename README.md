@@ -33,7 +33,9 @@ raise an [issue here instead](https://github.com/napari/napari/issues).
 
 ## Implemented Models
 
-  - *MitoNet*: A generalist mitochondrial instance segmentation model.
+  - *MitoNet*: A generalist mitochondrial instance segmentation model
+  - *NucleoNet*: A base model for EM instance nucleus segmentation
+  - *DropNet*: A base model for EM Lipid Droplet instance segmentation
 
 ## Example Datasets
 
@@ -109,7 +111,7 @@ pytest             # run the tests
 
 ## GPU Support
 
-**Note: Apple Silicon GPUs are supported through torch's MPS backend when available. The setup instructions below only apply to NVIDIA GPUs on Windows and Linux.**
+**Note: Apple Silicon GPUs are supported through torch's MPS backend when available. The setup instructions below apply to NVIDIA GPUs on Windows and Linux.**
 
 As for any deep learning models, having a GPU installed on your system will significantly
 increase model throughput (although we ship CPU optimized versions of all models with the plugin).
