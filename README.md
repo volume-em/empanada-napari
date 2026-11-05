@@ -46,12 +46,12 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 ### New Users
 
-empanada-napari requires **Python ≥ 3.13** and **napari ≥ 0.9** (including 0.10.x).
+empanada-napari requires **Python ≥ 3.12** and **napari ≥ 0.9** (including 0.10.x).
 
 #### pip
 
 ```shell
-python3.13 -m venv empanada-env
+python3.12 -m venv empanada-env
 source empanada-env/bin/activate   # Windows: empanada-env\Scripts\activate
 python -m pip install -U pip
 python -m pip install "napari[all]>=0.9"
@@ -61,7 +61,7 @@ python -m pip install empanada-napari
 #### conda
 
 ```shell
-conda create -n empanada-env python=3.13 -y
+conda create -n empanada-env python=3.12 -y
 conda activate empanada-env
 python -m pip install -U pip
 python -m pip install "napari[all]>=0.9"
@@ -81,7 +81,7 @@ Look for **empanada-napari** under the Plugins menu.
 
 ### Returning Users
 
-Create or activate a Python 3.13 environment, then upgrade:
+Create or activate a Python 3.12+ environment, then upgrade:
 
 ```shell
 conda activate empanada-env
@@ -89,7 +89,7 @@ python -m pip install -U "napari[all]>=0.9" empanada-napari
 python -m napari
 ```
 
-Older installs on Python 3.10–3.12 or napari 0.6.x are not compatible with this release. Use a new 3.13 environment instead of upgrading in place.
+Older installs on Python 3.10–3.11 or napari 0.6.x are not compatible with this release. Use a new 3.12+ environment instead of upgrading in place.
 
 
 ### Development
@@ -97,7 +97,7 @@ Older installs on Python 3.10–3.12 or napari 0.6.x are not compatible with thi
 Clone the repository, then:
 
 ```shell
-conda create -n empanada-dev python=3.13 -y
+conda create -n empanada-dev python=3.12 -y
 conda activate empanada-dev
 python -m pip install -U pip
 python -m pip install -e ".[dev]"
