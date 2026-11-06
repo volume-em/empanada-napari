@@ -4,7 +4,6 @@ import napari
 from napari import Viewer
 from napari.layers import Image
 from napari.qt.threading import thread_worker
-from napari_plugin_engine import napari_hook_implementation
 from magicgui import magicgui, widgets
 from qtpy.QtWidgets import QScrollArea
 
@@ -512,6 +511,5 @@ def volume_inference_widget():
     return widget
 
 
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
 def volume_dock_widget():
     return volume_inference_widget, {'name': '3D Inference'}

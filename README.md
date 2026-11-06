@@ -46,54 +46,65 @@ Volume EM datasets for benchmarking mitochondrial instance segmentation are avai
 
 ### New Users
 
-empanada-napari works with Python 3.10–3.13 and napari<=0.6.6.
-
+empanada-napari requires **Python ≥ 3.12** and **napari ≥ 0.9** (including 0.10.x).
 
 #### pip
 
-Use this on macOS, or anywhere you are not already in a conda environment.
-
 ```shell
-python3 -m venv empanada-env
-source empanada-env/bin/activate
+python3.12 -m venv empanada-env
+source empanada-env/bin/activate   # Windows: empanada-env\Scripts\activate
 python -m pip install -U pip
-pip install "napari[all]==0.6.6"
-pip install empanada-napari
+python -m pip install "napari[all]>=0.9"
+python -m pip install empanada-napari
 ```
 
 #### conda
 
-Install napari and PyTorch from conda-forge first. The plugin's pip install then keeps that conda PyTorch, which shares OpenMP with conda napari.
-
 ```shell
-conda create -n empanada-env -c conda-forge python=3.11 "napari=0.6.6" pytorch torchvision
+conda create -n empanada-env python=3.12 -y
 conda activate empanada-env
-pip install empanada-napari
+python -m pip install -U pip
+python -m pip install "napari[all]>=0.9"
+python -m pip install empanada-napari
 ```
 
-Launch napari:
+Launch napari from the same environment:
 
 ```shell
-napari
+python -m napari
 ```
 
-Look for empanada-napari under the "Plugins" menu.
+Prefer `python -m napari` over bare `napari` so the plugin loads from this environment (some systems still have an older `napari` earlier on `PATH`).
+
+Look for **empanada-napari** under the Plugins menu.
 
 
 ### Returning Users
 
-If you installed napari into a virtual environment as suggested in the original release documentation, 
-be sure to activate it and uninstall the old empanada-napari.
+Create or activate a Python 3.12+ environment, then upgrade:
 
 ```shell
-pip uninstall empanada-napari
+conda activate empanada-env
+python -m pip install -U "napari[all]>=0.9" empanada-napari
+python -m napari
 ```
 
-Then install the newest version:
+Older installs on Python 3.10–3.11 or napari 0.6.x are not compatible with this release. Use a new 3.12+ environment instead of upgrading in place.
+
+
+### Development
+
+Clone the repository, then:
 
 ```shell
-pip install empanada-napari
+conda create -n empanada-dev python=3.12 -y
+conda activate empanada-dev
+python -m pip install -U pip
+python -m pip install -e ".[dev]"
+python -m napari   # launch napari with the plugin
+pytest             # run the tests
 ```
+
 
 
 ![empanada](images/demo.gif)
@@ -118,18 +129,13 @@ nvidia-smi
 If this returns "command not found" then you need to [install the driver from NVIDIA](https://www.nvidia.com/download/index.aspx). Instead, if
 if the driver is installed correctly, you may need to switch to the GPU enabled version of torch.
 
-First, uninstall the current version of torch:
+Reinstall torch with a CUDA build matching your system using the selector at
+[pytorch.org](https://pytorch.org/get-started/locally/), for example:
 
 ```shell
-pip uninstall torch
+pip install --upgrade --force-reinstall torch torchvision
 ```
 
-Then [install torch >= 1.10 using conda for your system](https://pytorch.org/get-started/locally/).
-This command should work:
-
-```shell
-conda install pytorch cudatoolkit -c pytorch
-```
 
 ## Citing this work
 

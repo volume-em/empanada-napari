@@ -7,7 +7,6 @@ from glob import glob
 import napari
 from napari import Viewer
 from napari.layers import Image, Shapes
-from napari_plugin_engine import napari_hook_implementation
 from magicgui import magicgui
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QPlainTextEdit
 from empanada_napari.utils import add_new_model
@@ -36,7 +35,3 @@ def register_model_widget():
         print('Finished!')
 
     return widget
-
-@napari_hook_implementation(specname='napari_experimental_provide_dock_widget')
-def register_model_dock_widget():
-    return register_model_widget, {'name': 'Register new model'}
