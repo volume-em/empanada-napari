@@ -32,7 +32,7 @@ dependencies = [
     "imagecodecs",
     "imagehash",
     "mlflow",
-    "napari>=0.9.0",
+    "napari>=0.10",
     "numba>=0.58.1",
     "numpy>=1.22",
     "opencv-python-headless>=4.11.0.0",
@@ -64,7 +64,7 @@ test = [
     "zenodo-get",
 ]
 dev = [
-    "napari[all]",
+    "napari[all]>=0.10",
     "empanada-napari[test]",
 ]
 
