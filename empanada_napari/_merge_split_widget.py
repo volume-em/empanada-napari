@@ -432,17 +432,24 @@ def split_labels():
         distance = ndi.distance_transform_edt(binary)
         energy = -distance
 
-        # handle irritating quirk of peak_local_max
-        # when any dimension is 1
+        # The crop is the label's tight bounding box, so the array border is
+        # the object edge. peak_local_max's default exclude_border drops peaks
+        # within min_distance of that edge. Disconnected pieces of one label
+        # sit on that edge, so both peaks are discarded and split reports
+        # "Nothing to split." Keep border peaks.
         if any([s == 1 for s in distance.shape]):
-            coords = peak_local_max(np.squeeze(distance), min_distance=min_distance)
+            coords = peak_local_max(
+                np.squeeze(distance), min_distance=min_distance, exclude_border=False
+            )
             markers = np.zeros(np.squeeze(distance).shape, dtype=bool)
             markers[tuple(coords.T)] = True
 
             expand_axis = [s == 1 for s in distance.shape].index(True)
             markers = np.expand_dims(markers, axis=expand_axis)
         else:
-            coords = peak_local_max(distance, min_distance=min_distance)
+            coords = peak_local_max(
+                distance, min_distance=min_distance, exclude_border=False
+            )
             markers = np.zeros(distance.shape, dtype=bool)
             markers[tuple(coords.T)] = True
         
